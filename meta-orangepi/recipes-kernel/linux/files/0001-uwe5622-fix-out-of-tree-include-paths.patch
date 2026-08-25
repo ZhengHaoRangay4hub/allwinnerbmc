@@ -1,0 +1,49 @@
+From 4b5e9c2f4aa2c9e8f7c1b2a3d4e5f60718293a4b Mon Sep 17 00:00:00 2001
+From: Orange Pi OpenBMC Port <port@example.invalid>
+Date: Tue, 25 Aug 2026 17:30:00 +0000
+Subject: [PATCH] uwe5622: fix out-of-tree include paths
+
+The vendor UWE5622 makefiles use $(src) as if it were an absolute path.
+With an O= build, Kbuild supplies a relative source directory there, so
+the include directory cannot be found and wcn_bus.h is missing.  Resolve
+the path from srctree instead.
+
+Upstream-Status: Inappropriate [board-port build fix]
+---
+ drivers/net/wireless/uwe5622/Makefile          | 2 +-
+ drivers/net/wireless/uwe5622/unisocwcn/Makefile | 8 ++++----
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/net/wireless/uwe5622/Makefile b/drivers/net/wireless/uwe5622/Makefile
+index 7b9e0a6..f4b0f6d 100644
+--- a/drivers/net/wireless/uwe5622/Makefile
++++ b/drivers/net/wireless/uwe5622/Makefile
+@@ -3,7 +3,7 @@ obj-$(CONFIG_WLAN_UWE5622)    += unisocwifi/
+ obj-$(CONFIG_TTY_OVERY_SDIO)  += tty-sdio/
+ 
+-UNISOCWCN_DIR := $(shell cd $(src)/unisocwcn/ && /bin/pwd)
++UNISOCWCN_DIR := $(abspath $(srctree)/drivers/net/wireless/uwe5622/unisocwcn)
+ UNISOC_BSP_INCLUDE := $(UNISOCWCN_DIR)/include
+ export UNISOC_BSP_INCLUDE
+ 
+diff --git a/drivers/net/wireless/uwe5622/unisocwcn/Makefile b/drivers/net/wireless/uwe5622/unisocwcn/Makefile
+index 3e5e4a0..7f4a6d1 100644
+--- a/drivers/net/wireless/uwe5622/unisocwcn/Makefile
++++ b/drivers/net/wireless/uwe5622/unisocwcn/Makefile
+@@ -102,9 +102,9 @@ endif
+ ccflags-y += -DCONFIG_WCN_UTILS
+ 
+ #### include path ######
+-ccflags-y += -I$(src)/include/
+-ccflags-y += -I$(src)/platform/
+-ccflags-y += -I$(src)/platform/rf/
++UNISOCWCN_SRC := $(abspath $(srctree)/drivers/net/wireless/uwe5622/unisocwcn)
++ccflags-y += -I$(UNISOCWCN_SRC)/include/
++ccflags-y += -I$(UNISOCWCN_SRC)/platform/
++ccflags-y += -I$(UNISOCWCN_SRC)/platform/rf/
+ 
+ #### add cflag for Customer ######
+ ### ---------- Hisilicon start ---------- ###
+-- 
+2.43.0
+
