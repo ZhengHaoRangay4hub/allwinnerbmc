@@ -19,9 +19,9 @@ jobs:
     timeout-minutes: 360
     env:
       DEBIAN_FRONTEND: noninteractive
-      BB_NUMBER_THREADS: "4"
-      BB_NUMBER_PARSE_THREADS: "4"
-      PARALLEL_MAKE: "-j4"
+      BB_NUMBER_THREADS: "24"
+      BB_NUMBER_PARSE_THREADS: "12"
+      PARALLEL_MAKE: "-j24"
 
     steps:
       - name: Check out port sources
@@ -144,10 +144,10 @@ jobs:
           set -u
 
           cat >> "$GITHUB_WORKSPACE/openbmc-build/conf/local.conf" <<EOF
-          BB_NUMBER_THREADS = "4"
-          BB_NUMBER_PARSE_THREADS = "4"
-          PARALLEL_MAKE = "-j4"
-          PARALLEL_MAKE:pn-gcc-cross-aarch64 = "-j4"
+          BB_NUMBER_THREADS = "24"
+          BB_NUMBER_PARSE_THREADS = "12"
+          PARALLEL_MAKE = "-j24"
+          PARALLEL_MAKE:pn-gcc-cross-aarch64 = "-j24"
           DL_DIR = "$GITHUB_WORKSPACE/yocto-downloads"
           SSTATE_DIR = "$GITHUB_WORKSPACE/yocto-sstate"
           TMPDIR = "$GITHUB_WORKSPACE/yocto-tmp"
