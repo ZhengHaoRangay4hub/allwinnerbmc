@@ -64,27 +64,16 @@ jobs:
           restore-keys: |
             yocto-orangepi-zero2-
 
-      - name: Fetch Linux and U-Boot through accelerated mirrors
+      - name: Fetch Linux and U-Boot from GitHub
         shell: bash
         run: |
           set -Eeuo pipefail
 
           clone_ref() {
             local repo="$1" ref="$2" dest="$3"
-            local urls=(
-              "https://gh-proxy.com/https://github.com/${repo}.git"
-              "https://ghfast.top/https://github.com/${repo}.git"
-              "https://github.com/${repo}.git"
-            )
-            for url in "${urls[@]}"; do
-              rm -rf "$dest"
-              echo "Trying $url"
-              if git clone --depth 1 --single-branch --branch "$ref" "$url" "$dest"; then
-                return 0
-              fi
-            done
-            echo "Unable to clone ${repo}@${ref}" >&2
-            return 1
+            rm -rf "$dest"
+            git clone --depth 1 --single-branch --branch "$ref" \
+              "https://github.com/${repo}.git" "$dest"
           }
 
           clone_ref orangepi-xunlong/linux-orangepi orange-pi-6.1-sun50iw9 linux-orangepi
@@ -136,7 +125,6 @@ jobs:
           EXTERNALSRC_BUILD:pn-linux-orangepi = "$GITHUB_WORKSPACE/linux-openbmc-build"
           EXTERNALSRC:pn-u-boot-orangepi = "$GITHUB_WORKSPACE/u-boot-orangepi"
           EXTERNALSRC_BUILD:pn-u-boot-orangepi = "$GITHUB_WORKSPACE/u-boot-openbmc-build"
-          PREMIRRORS:prepend = " git://github.com/.* https://gh-proxy.com/https://github.com/ https://github.com/.* https://gh-proxy.com/https://github.com/ "
           CONNECTIVITY_CHECK_URIS = ""
           EOF
 
