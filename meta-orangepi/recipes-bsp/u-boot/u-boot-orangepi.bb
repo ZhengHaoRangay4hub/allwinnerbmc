@@ -11,6 +11,8 @@ SRCREV = "0b91e222a025640182ea986f3c8e8db98cdc962a"
 LIC_FILES_CHKSUM = "file://Licenses/README;md5=5a7450c57ffe5ae63fd732446b988025"
 
 PROVIDES = "virtual/bootloader"
+ALLOW_EMPTY:${PN} = "1"
+RPROVIDES:${PN} += "u-boot-fw-utils"
 
 inherit externalsrc deploy
 
