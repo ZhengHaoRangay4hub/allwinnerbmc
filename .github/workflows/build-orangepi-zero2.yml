@@ -148,7 +148,10 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          cd "$GITHUB_WORKSPACE/openbmc-build"
+          cd "$GITHUB_WORKSPACE/openbmc"
+          set +u
+          . ./oe-init-build-env "$GITHUB_WORKSPACE/openbmc-build"
+          set -u
           bitbake obmc-phosphor-image 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-bitbake.log"
 
       - name: Collect TF-card image and checksums
