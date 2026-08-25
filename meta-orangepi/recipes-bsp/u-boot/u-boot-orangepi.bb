@@ -26,6 +26,7 @@ EXTERNALSRC_BUILD ?= "${B}"
 do_configure:append() {
     install -d ${B}/include/asm
     ln -sfn ${S}/arch/arm/include/asm/arch-sunxi ${B}/include/asm/arch
+    ln -sfn arch-sunxi ${S}/arch/arm/include/asm/arch
 }
 
 do_deploy:append() {
