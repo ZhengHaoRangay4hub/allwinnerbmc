@@ -1,7 +1,7 @@
 From 4b5e9c2f4aa2c9e8f7c1b2a3d4e5f60718293a4b Mon Sep 17 00:00:00 2001
 From: Orange Pi OpenBMC Port <port@example.invalid>
 Date: Tue, 25 Aug 2026 17:30:00 +0000
-Subject: [PATCH] uwe5622: fix out-of-tree include paths
+Subject: [PATCH] wireless: fix out-of-tree include paths
 
 The vendor UWE5622 makefiles use $(src) as if it were an absolute path.
 With an O= build, Kbuild supplies a relative source directory there, so
@@ -12,7 +12,8 @@ Upstream-Status: Inappropriate [board-port build fix]
 ---
  drivers/net/wireless/uwe5622/Makefile           | 2 +-
  drivers/net/wireless/uwe5622/unisocwcn/Makefile | 5 ++++--
- 2 files changed, 5 insertions(+), 4 deletions(-)
+ drivers/net/wireless/rtl88x2cs/Makefile          | 2 +-
+ 3 files changed, 6 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/net/wireless/uwe5622/Makefile b/drivers/net/wireless/uwe5622/Makefile
 index 7b9e0a6..f4b0f6d 100644
@@ -44,5 +45,17 @@ index 3e5e4a0..7f4a6d1 100644
  
  #### add cflag for Customer ######
  ### ---------- Hisilicon start ---------- ###
+
+diff --git a/drivers/net/wireless/rtl88x2cs/Makefile b/drivers/net/wireless/rtl88x2cs/Makefile
+index 0000000..0000000 100644
+--- a/drivers/net/wireless/rtl88x2cs/Makefile
++++ b/drivers/net/wireless/rtl88x2cs/Makefile
+@@ -2317,5 +2317,5 @@
+ ########### HAL_RTL8822C #################################
+ ifeq ($(CONFIG_RTL8822C), y)
+-include $(TopDIR)/drivers/net/wireless/rtl88x2cs/rtl8822c.mk
++include $(abspath $(srctree)/drivers/net/wireless/rtl88x2cs/rtl8822c.mk)
+ EXTRA_CFLAGS += -DCONFIG_RTW_IOCTL_SET_COUNTRY
+ endif
 -- 
 2.43.0
