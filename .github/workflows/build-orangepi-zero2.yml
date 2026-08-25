@@ -142,6 +142,7 @@ jobs:
           TMPDIR = "$GITHUB_WORKSPACE/yocto-tmp"
           HOSTTOOLS_NONFATAL:append = " chrpath rpcgen"
           HOSTTOOLS:remove = " chrpath rpcgen"
+          BBPATH:prepend = "$GITHUB_WORKSPACE/openbmc/upstream-layers/openembedded-core/meta:"
           EXTERNALSRC:pn-linux-orangepi = "$GITHUB_WORKSPACE/linux-orangepi"
           EXTERNALSRC_BUILD:pn-linux-orangepi = "$GITHUB_WORKSPACE/linux-openbmc-build"
           EXTERNALSRC:pn-u-boot-orangepi = "$GITHUB_WORKSPACE/u-boot-orangepi"

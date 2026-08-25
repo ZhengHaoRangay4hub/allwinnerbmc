@@ -8,8 +8,8 @@ PV = "2021.10+git${SRCPV}"
 SRC_URI = ""
 SRCREV = "0b91e222a025640182ea986f3c8e8db98cdc962a"
 
-require ${COREBASE}/meta/recipes-bsp/u-boot/u-boot-common.inc
-require ${COREBASE}/meta/recipes-bsp/u-boot/u-boot.inc
+require ${COREBASE}/upstream-layers/openembedded-core/meta/recipes-bsp/u-boot/u-boot-common.inc
+require ${COREBASE}/upstream-layers/openembedded-core/meta/recipes-bsp/u-boot/u-boot.inc
 
 LIC_FILES_CHKSUM = "file://Licenses/README;md5=5a7450c57ffe5ae63fd732446b988025"
 
