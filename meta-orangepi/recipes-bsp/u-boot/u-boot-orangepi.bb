@@ -8,12 +8,11 @@ PV = "2021.10+git${SRCPV}"
 SRC_URI = ""
 SRCREV = "0b91e222a025640182ea986f3c8e8db98cdc962a"
 
-require ${COREBASE}/upstream-layers/openembedded-core/meta/recipes-bsp/u-boot/u-boot-common.inc
-require ${COREBASE}/upstream-layers/openembedded-core/meta/recipes-bsp/u-boot/u-boot.inc
-
 LIC_FILES_CHKSUM = "file://Licenses/README;md5=5a7450c57ffe5ae63fd732446b988025"
 
-inherit externalsrc
+PROVIDES = "virtual/bootloader"
+
+inherit externalsrc deploy
 
 COMPATIBLE_MACHINE = "orangepi-zero2"
 UBOOT_ARCH = "arm"
@@ -24,12 +23,25 @@ B = "${WORKDIR}/build"
 EXTERNALSRC ?= "/public/home/acb2lyz1kv/opizero-openbmc/u-boot-orangepi"
 EXTERNALSRC_BUILD ?= "${B}"
 
-do_configure:append() {
+do_configure() {
     install -d ${B}/include/asm
     ln -sfn ${S}/arch/arm/include/asm/arch-sunxi ${B}/include/asm/arch
     ln -sfn arch-sunxi ${S}/arch/arm/include/asm/arch
+    oe_runmake -C ${S} O=${B} ARCH=${UBOOT_ARCH} \
+        CROSS_COMPILE="${TARGET_PREFIX}" ${UBOOT_MACHINE}
 }
 
-do_deploy:append() {
+do_compile() {
+    unset LDFLAGS CFLAGS CPPFLAGS
+    oe_runmake -C ${S} O=${B} ARCH=${UBOOT_ARCH} \
+        CROSS_COMPILE="${TARGET_PREFIX}" ${UBOOT_MAKE_TARGET}
+}
+
+do_install[noexec] = "1"
+
+do_deploy() {
+    install -d ${DEPLOYDIR}
     install -m 0644 ${B}/${UBOOT_BINARY} ${DEPLOYDIR}/${UBOOT_BINARY}
 }
+
+addtask deploy after do_compile before do_build
