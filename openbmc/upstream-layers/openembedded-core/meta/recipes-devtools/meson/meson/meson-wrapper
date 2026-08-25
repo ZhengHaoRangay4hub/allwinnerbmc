@@ -1,0 +1,31 @@
+#!/bin/sh
+
+# If this wrapper script is being ran in a normal build environment and not an
+# eSDK, then just call the real script directly.
+if [ -z "$OECORE_NATIVE_SYSROOT" ]; then
+    exec "meson.real" "$@"
+fi
+
+case "$1" in
+setup|configure|dist|install|introspect|init|test|wrap|subprojects|rewrite|compile|devenv|env2mfile|help)
+    MESON_CMD="$1"
+    shift
+    ;;
+*)
+    MESON_CMD=setup
+    echo meson-wrapper: Implicit setup command assumed
+    ;;
+esac
+
+if [ "$MESON_CMD" = "setup" ]; then
+    MESON_SETUP_OPTS=" \
+        --cross-file="$OECORE_NATIVE_SYSROOT/usr/share/meson/${TARGET_PREFIX}meson.cross" \
+        --native-file="$OECORE_NATIVE_SYSROOT/usr/share/meson/meson.native" \
+        "
+    echo meson-wrapper: Running meson with setup options: \"$MESON_SETUP_OPTS\"
+fi
+
+exec "$OECORE_NATIVE_SYSROOT/usr/bin/meson.real" \
+    $MESON_CMD \
+    $MESON_SETUP_OPTS \
+    "$@"

@@ -1,0 +1,31 @@
+#!/bin/sh
+# Basic GPIO control through /dev/gpiochipN.  Line numbers are the kernel
+# GPIO offsets; use gpiodetect/gpioinfo to identify the chip and line.
+set -eu
+
+usage() {
+    echo "Usage: orangepi-gpioctl get <gpiochipN> <line>" >&2
+    echo "       orangepi-gpioctl set <gpiochipN> <line> <0|1>" >&2
+    exit 2
+}
+
+[ "$#" -ge 3 ] || usage
+op=$1
+chip=$2
+line=$3
+case "$line" in
+    ''|*[!0-9]*) echo "invalid GPIO line: $line" >&2; exit 2 ;;
+esac
+
+case "$op" in
+    get)
+        [ "$#" -eq 3 ] || usage
+        exec /usr/bin/gpioget "$chip" "$line"
+        ;;
+    set)
+        [ "$#" -eq 4 ] || usage
+        case "$4" in 0|1) ;; *) echo "value must be 0 or 1" >&2; exit 2 ;; esac
+        exec /usr/bin/gpioset --mode=exit "$chip" "$line=$4"
+        ;;
+    *) usage ;;
+esac

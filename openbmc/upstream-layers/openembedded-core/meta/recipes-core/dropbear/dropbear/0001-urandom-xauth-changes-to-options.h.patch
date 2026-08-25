@@ -1,0 +1,23 @@
+From e5f6c6e8d2b6315e509c610e7d13e7dd2b465a85 Mon Sep 17 00:00:00 2001
+From: Richard Purdie <richard@openedhand.com>
+Date: Wed, 31 Aug 2005 10:45:47 +0000
+Subject: [PATCH] urandom-xauth-changes-to-options.h
+
+Upstream-Status: Inappropriate [configuration]
+---
+ src/default_options.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/default_options.h b/src/default_options.h
+index ffaf062..2eb7de1 100644
+--- a/src/default_options.h
++++ b/src/default_options.h
+@@ -347,7 +347,7 @@ group1 in Dropbear server too */
+ 
+ /* The command to invoke for xauth when using X11 forwarding.
+  * "-q" for quiet */
+-#define XAUTH_COMMAND "/usr/bin/xauth -q"
++#define XAUTH_COMMAND "xauth -q"
+ 
+ 
+ /* If you want to enable running an sftp server (such as the one included with

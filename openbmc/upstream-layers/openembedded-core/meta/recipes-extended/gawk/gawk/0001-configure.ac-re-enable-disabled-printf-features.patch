@@ -1,0 +1,35 @@
+From 53808cbdab1d12c99a4fbadf4ea134b98664e8c7 Mon Sep 17 00:00:00 2001
+From: Alexander Kanavin <alex@linutronix.de>
+Date: Fri, 22 Nov 2024 12:13:58 +0100
+Subject: [PATCH] configure.ac: re-enable disabled printf features
+
+This is needed for ptests to pass for one thing.
+
+Upstream-Status: Inappropriate [needs a config option]
+Signed-off-by: Alexander Kanavin <alex@linutronix.de>
+---
+ configure.ac | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 471fbc1..d7d173a 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -402,7 +402,7 @@ int main()
+ ])],
+ 	has_f_format=yes,
+ 	has_f_format=no,
+-	has_f_format=no  dnl Cross-compiling, assuming the worst.
++	has_f_format=yes  dnl Cross-compiling in oe-core
+ )
+ if test "$has_f_format" = yes
+ then
+@@ -431,7 +431,7 @@ int main()
+ ])],
+ 	has_a_format=yes,
+ 	has_a_format=no,
+-	has_a_format=no  dnl Cross-compiling, assuming the worst.
++	has_a_format=yes  dnl Cross-compiling in oe-core
+ )
+ if test "$has_a_format" = yes
+ then

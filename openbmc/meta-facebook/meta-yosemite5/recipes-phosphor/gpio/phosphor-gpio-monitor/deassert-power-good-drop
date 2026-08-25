@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# shellcheck source=meta-facebook/meta-yosemite5/recipes-phosphor/state/phosphor-state-manager/power-cmd
+source /usr/libexec/phosphor-state-manager/power-cmd
+
+# 1. Change to page 3, for r/w regsiter 0x300 ~ 0x3FF
+i2ctransfer -y 13 w2@0x09 0xfd 0x03
+
+# 2. Disable SSC
+i2ctransfer -y 13 w2@0x09 0x07 0x00
+
+# 3. Setting SSC amplitude + step（-0.25%）
+i2ctransfer -y 13 w5@0x09 0x04 0xFC 0x2D 0x28 0x80
+i2ctransfer -y 13 w5@0x09 0x04 0xB5 0x16 0x28 0x80
+
+# 4. enable SSC
+i2ctransfer -y 13 w2@0x09 0x07 0x80
+
+# 5. Check SSC Enable/Disable status
+ret=$(i2ctransfer -y 13 w1@0x09 0x07 r1 2>/dev/null | tr -d ' ')
+if [ "$ret" != "0x80" ]; then
+    echo "Wrong SSC status read: $ret"
+fi
+echo "SSC deassertion is triggered by power-good drop, \
+    set SSC to -0.25% for better signal integrity"
+
+REQ_ON="${HOST_STATE_INTF}.Transition.On"
+STATE_TRANS_RUNNING="${HOST_STATE_INTF}.HostState.TransitioningToRunning"
+STATE_TRANS_OFF="${HOST_STATE_INTF}.HostState.TransitioningToOff"
+STATE_RUNNING="${HOST_STATE_INTF}.HostState.Running"
+STATE_OFF="${HOST_STATE_INTF}.HostState.Off"
+
+currentstate=$(get_host_prop CurrentHostState)
+if [ "$currentstate" = "$STATE_TRANS_RUNNING" ]; then
+    exit 0
+fi
+
+if is_service_busy host-poweron@0.service host-powerreset@0.service; then
+    exit 0
+fi
+
+if [ "$(power_status)" = "on" ]; then
+    transition=$(get_host_prop RequestedHostTransition)
+    if [ "$transition" != "$REQ_ON" ]; then
+        set_host_prop RequestedHostTransition "$REQ_ON"
+    elif [ "$currentstate" = "$STATE_TRANS_OFF" ]; then
+        set_host_prop CurrentHostState "$STATE_OFF"
+        sleep 0.1
+        set_host_prop CurrentHostState "$STATE_RUNNING"
+    elif [ "$currentstate" = "$STATE_OFF" ]; then
+        set_host_prop CurrentHostState "$STATE_RUNNING"
+    fi
+fi
+
+exit 0

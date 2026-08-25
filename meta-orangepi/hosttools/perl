@@ -1,0 +1,7 @@
+#!/bin/sh
+# The shared Sugon OS image has a minimal Perl 5.26 installation without the
+# core open.pm module.  BitBake only needs this pure-Perl module for its host
+# sanity check; keep the wrapper scoped to this build's hosttools directory.
+PERL5LIB=/work2/acb2lyz1kv/opizero-openbmc/hosttools/perl5${PERL5LIB:+:${PERL5LIB}}
+export PERL5LIB
+exec /usr/bin/perl "$@"

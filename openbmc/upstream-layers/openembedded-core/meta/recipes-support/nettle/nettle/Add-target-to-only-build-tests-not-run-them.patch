@@ -1,0 +1,49 @@
+From 232da891d3468acfeb80eaf6fa1fad9454242ed6 Mon Sep 17 00:00:00 2001
+From: Trevor Gamblin <tgamblin@baylibre.com>
+Date: Fri, 2 Aug 2024 09:48:43 -0400
+Subject: [PATCH] Makefile.in: Add target to only build tests (not run them)
+
+Not sending upstream as this is only a start of a solution to
+installable tests: It's useful for us already as is.
+
+Upstream-Status: Inappropriate [not a complete solution]
+
+Signed-off-by: Jussi Kukkonen <jussi.kukkonen@intel.com>
+Refactored for 3.4
+Signed-off-by: Armin Kuster <akuster@mvista.com>
+
+Refactor for 3.10, including turning it into an mbox for easier use.
+
+Signed-off-by: Trevor Gamblin <tgamblin@baylibre.com>
+---
+ Makefile.in           | 3 +++
+ testsuite/Makefile.in | 2 ++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/Makefile.in b/Makefile.in
+index 9399985..4d4046e 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -56,6 +56,9 @@ clean distclean mostlyclean maintainer-clean tags:
+ 	  echo "Making $@ in $$d" ; (cd $$d && $(MAKE) $@); done
+ 	$(MAKE) $@-here
+ 
++buildtest:
++	echo "Making $@ in testsuite" ; (cd testsuite && $(MAKE) $@)
++
+ check-here:
+ 	true
+ 
+diff --git a/testsuite/Makefile.in b/testsuite/Makefile.in
+index b2f0518..c93b9b6 100644
+--- a/testsuite/Makefile.in
++++ b/testsuite/Makefile.in
+@@ -144,6 +144,8 @@ $(TARGETS) $(EXTRA_TARGETS): testutils.$(OBJEXT) ../non-nettle.$(OBJEXT) \
+ # data.
+ VALGRIND = valgrind --error-exitcode=1 --leak-check=full --show-reachable=yes @IF_ASM@ --partial-loads-ok=yes
+ 
++buildtest: $(TS_ALL)
++
+ check: $(TS_ALL) $(TS_ALL:sc-%=%)
+ 	TEST_SHLIB_DIR="$(TEST_SHLIB_DIR)" \
+ 	  srcdir="$(srcdir)" \

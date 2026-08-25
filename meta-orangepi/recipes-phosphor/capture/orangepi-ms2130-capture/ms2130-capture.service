@@ -1,0 +1,14 @@
+[Unit]
+Description=MS2130 USB UVC frame capture
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=simple
+RuntimeDirectory=ms2130
+ExecStart=/usr/bin/ms2130-capture --device /dev/video0 --output /run/ms2130/latest.mjpg --width 1920 --height 1080 --fps 30
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+#!/bin/sh
+
+"$INIT_HOME/enable-devmem"
+
+MEDIA_DIR="/run/media"
+mkdir -p $MEDIA_DIR
+
+# Detect boot flash source
+WDTA_SCRATCH_VAL=$(printf "%d" "$(/sbin/devmem 0x14c3744c)")
+if [ "$(( (WDTA_SCRATCH_VAL & 2) >> 1 ))" = "1" ]; then
+    echo "1" > "$MEDIA_DIR/slot"
+    echo "Secondary SPI" > "/run/boot-device"
+else
+    echo "0" > "$MEDIA_DIR/slot"
+    echo "Primary SPI" > "/run/boot-device"
+fi

@@ -1,0 +1,9 @@
+#!/bin/sh
+
+cd /
+
+for f in /usr/libexec/phosphor-static-norootfs-init/initfiles/*; do
+    INIT_HOME=/usr/libexec/phosphor-static-norootfs-init $f
+done
+
+exec /lib/systemd/systemd

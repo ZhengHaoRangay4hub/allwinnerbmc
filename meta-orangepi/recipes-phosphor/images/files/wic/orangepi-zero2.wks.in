@@ -1,0 +1,6 @@
+# Orange Pi Zero 2 SD layout. U-Boot's sunxi SPL is written at 8 KiB;
+# the FAT boot partition follows it and contains Image/DTB/extlinux.conf.
+part u-boot --source rawcopy --sourceparams="file=u-boot-sunxi-with-spl.bin" --ondisk mmcblk0 --no-table --offset 8K
+part /boot --source bootimg-partition --ondisk mmcblk0 --fstype=vfat --label boot --active --align 1024 --size 64M
+part / --source rootfs --ondisk mmcblk0 --fstype=ext4 --label root --align 4096
+bootloader --ptable msdos

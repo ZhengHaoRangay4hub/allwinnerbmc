@@ -1,0 +1,14 @@
+OpenBMC upstream URL: https://github.com/openbmc/openbmc.git
+OpenBMC commit: e97c25438143a9265743cccdd3592357a7069470
+
+Linux H616 URL: https://github.com/orangepi-xunlong/orangepi-build.git (board support reference)
+Linux source URL: https://github.com/orangepi-xunlong/linux-orangepi.git
+Linux branch: orange-pi-6.1-sun50iw9
+Linux commit: 71144529b0334d1488624c41d0d3ba0cb03dd4c1
+
+U-Boot source URL: https://github.com/orangepi-xunlong/u-boot-orangepi.git
+U-Boot branch: v2021.10-sunxi
+U-Boot commit: 0b91e222a025640182ea986f3c8e8db98cdc962a
+
+Target: Orange Pi Zero 2, Allwinner H616, 1 GB / 512 MB variants
+

@@ -1,0 +1,55 @@
+From 172907f31d64da4c3f289a439fd605d2ab51b24a Mon Sep 17 00:00:00 2001
+From: Lei Maohui <leimaohui@cn.fujitsu.com>
+Date: Wed, 19 Aug 2015 12:17:03 +0900
+Subject: [PATCH] configure in cross
+
+Update the configure script to cross-compiling with OE.  This hard-codes
+a few target paths and drops the host program lookups (ip, pppd, setsid,
+id) which are inappropriate when cross-compiling.
+
+Upstream-Status: Inappropriate [build system specific changes]
+
+Refreshed for rp-pppoe 4.0 (configure.in -> configure.ac).
+---
+ src/configure.ac | 17 ++++++-----------
+ 1 file changed, 6 insertions(+), 11 deletions(-)
+
+diff --git a/src/configure.ac b/src/configure.ac
+index 4add50c..9dff457 100644
+--- a/src/configure.ac
++++ b/src/configure.ac
+@@ -4,6 +4,13 @@ AC_CONFIG_SRCDIR([pppoe.c])
+
+ dnl pppd directory for kernel-mode PPPoE
+ PPPD_DIR=ppp-2.4.1.pppoe2
++
++dnl hard code some paths
++PPPD=/usr/sbin/pppd
++ID=/usr/bin/id
++ECHO=/bin/echo
++AC_ARG_VAR(PPPD)
++AC_ARG_VAR(ID)
+
+ AC_CONFIG_HEADERS([config.h])
+
+@@ -111,17 +118,8 @@ AC_FUNC_MEMCMP
+ AC_CHECK_FUNCS(select socket strerror strtol strlcpy)
+ AC_PROG_INSTALL
+
+-dnl Check for location of ip
+-AC_PATH_PROG(IP, ip, NOTFOUND, $PATH:/bin:/sbin:/usr/bin:/usr/sbin)
+-
+-dnl Check for location of pppd
+-AC_PATH_PROG(PPPD, pppd, NOTFOUND, $PATH:/sbin:/usr/sbin:/usr/local/sbin)
+-
+-dnl Check for setsid (probably Linux-specific)
+-AC_PATH_PROG(SETSID, setsid, "", $PATH:/sbin:/usr/sbin:/usr/local/sbin)
+-
+ dnl Check for an "id" which accepts "-u" option -- hack for Solaris.
+-AC_PATH_PROG(ID, id, "", /usr/xpg4/bin:$PATH)
++dnl AC_PATH_PROG(ID, id, "", /usr/xpg4/bin:$PATH)
+
+ dnl Check for Linux-specific kernel support for PPPoE
+ AC_MSG_CHECKING(for Linux 2.4.X kernel-mode PPPoE support)
+--
+2.34.1

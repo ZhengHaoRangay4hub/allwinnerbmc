@@ -1,0 +1,188 @@
+name: Orange Pi Zero 2 OpenBMC
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orangepi-zero2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Linux, U-Boot and OpenBMC image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      BB_NUMBER_THREADS: "4"
+      BB_NUMBER_PARSE_THREADS: "4"
+      PARALLEL_MAKE: "-j2"
+
+    steps:
+      - name: Check out port sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Reclaim runner disk space
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell
+          df -h
+
+      - name: Install build dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential chrpath cpio device-tree-compiler diffstat \
+            flex gawk gcc-aarch64-linux-gnu git libelf-dev liblz4-tool \
+            libncurses-dev libssl-dev locales lz4 make patch pylint3 \
+            python3 python3-pip python3-pexpect python3-git python3-jinja2 \
+            python3-subunit rsync socat texinfo unzip wget xterm zstd
+
+      - name: Configure locale
+        run: |
+          sudo locale-gen en_US.UTF-8
+          echo "LANG=en_US.UTF-8" >> "$GITHUB_ENV"
+          echo "LC_ALL=en_US.UTF-8" >> "$GITHUB_ENV"
+
+      - name: Cache Yocto downloads and sstate
+        uses: actions/cache@v4
+        with:
+          path: |
+            yocto-downloads
+            yocto-sstate
+          key: yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}
+          restore-keys: |
+            yocto-orangepi-zero2-
+
+      - name: Fetch Linux and U-Boot through accelerated mirrors
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          clone_ref() {
+            local repo="$1" ref="$2" dest="$3"
+            local urls=(
+              "https://gh-proxy.com/https://github.com/${repo}.git"
+              "https://ghfast.top/https://github.com/${repo}.git"
+              "https://github.com/${repo}.git"
+            )
+            for url in "${urls[@]}"; do
+              rm -rf "$dest"
+              echo "Trying $url"
+              if git clone --depth 1 --single-branch --branch "$ref" "$url" "$dest"; then
+                return 0
+              fi
+            done
+            echo "Unable to clone ${repo}@${ref}" >&2
+            return 1
+          }
+
+          clone_ref orangepi-xunlong/linux-orangepi orange-pi-6.1-sun50iw9 linux-orangepi
+          clone_ref orangepi-xunlong/u-boot-orangepi v2021.10-sunxi u-boot-orangepi
+
+          test "$(git -C linux-orangepi rev-parse HEAD)" = \
+            "$(sed -n 's/^Linux commit: //p' sources/versions.txt)"
+          test "$(git -C u-boot-orangepi rev-parse HEAD)" = \
+            "$(sed -n 's/^U-Boot commit: //p' sources/versions.txt)"
+
+      - name: Build standalone Linux and U-Boot first
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          make -C linux-orangepi O="$GITHUB_WORKSPACE/linux-build" \
+            ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- linux_sunxi64_defconfig
+          make -C linux-orangepi O="$GITHUB_WORKSPACE/linux-build" \
+            ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j2 Image dtbs modules
+
+          make -C u-boot-orangepi O="$GITHUB_WORKSPACE/u-boot-build" \
+            ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- orangepi_zero2_defconfig
+          make -C u-boot-orangepi O="$GITHUB_WORKSPACE/u-boot-build" \
+            ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j2
+
+      - name: Prepare OpenBMC board layer and local sources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cp -a meta-orangepi openbmc/meta-orangepi
+          mkdir -p yocto-downloads yocto-sstate
+
+          cd openbmc
+          set +u
+          TEMPLATECONF=meta-orangepi/conf/templates/default \
+            . ./setup orangepi-zero2 "$GITHUB_WORKSPACE/openbmc-build"
+          set -u
+
+          cat >> "$GITHUB_WORKSPACE/openbmc-build/conf/local.conf" <<EOF
+          BB_NUMBER_THREADS = "4"
+          BB_NUMBER_PARSE_THREADS = "4"
+          PARALLEL_MAKE = "-j2"
+          PARALLEL_MAKE:pn-gcc-cross-aarch64 = "-j2"
+          DL_DIR = "$GITHUB_WORKSPACE/yocto-downloads"
+          SSTATE_DIR = "$GITHUB_WORKSPACE/yocto-sstate"
+          TMPDIR = "$GITHUB_WORKSPACE/yocto-tmp"
+          HOSTTOOLS_NONFATAL:append = " chrpath rpcgen"
+          HOSTTOOLS:remove = " chrpath rpcgen"
+          EXTERNALSRC:pn-linux-orangepi = "$GITHUB_WORKSPACE/linux-orangepi"
+          EXTERNALSRC_BUILD:pn-linux-orangepi = "$GITHUB_WORKSPACE/linux-openbmc-build"
+          EXTERNALSRC:pn-u-boot-orangepi = "$GITHUB_WORKSPACE/u-boot-orangepi"
+          EXTERNALSRC_BUILD:pn-u-boot-orangepi = "$GITHUB_WORKSPACE/u-boot-openbmc-build"
+          PREMIRRORS:prepend = " git://github.com/.* https://gh-proxy.com/https://github.com/ https://github.com/.* https://gh-proxy.com/https://github.com/ "
+          CONNECTIVITY_CHECK_URIS = ""
+          EOF
+
+      - name: Build full OpenBMC image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$GITHUB_WORKSPACE/openbmc-build"
+          bitbake obmc-phosphor-image 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-bitbake.log"
+
+      - name: Collect TF-card image and checksums
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          deploy="$GITHUB_WORKSPACE/openbmc-build/tmp/deploy/images/orangepi-zero2"
+          out="$GITHUB_WORKSPACE/tf-card-image"
+          test -d "$deploy"
+          mkdir -p "$out"
+          find "$deploy" -maxdepth 1 -type f \( \
+            -name '*.wic' -o -name '*.wic.xz' -o -name '*.wic.bmap' -o \
+            -name 'Image*' -o -name '*.dtb' -o -name '*u-boot*' \
+          \) -exec cp -a {} "$out/" \;
+          cp -a linux-build/arch/arm64/boot/Image "$out/standalone-Image"
+          cp -a linux-build/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dtb "$out/standalone-orangepi-zero2.dtb"
+          sha256sum "$out"/* | sort > "$out/SHA256SUMS"
+          test -n "$(find "$out" -type f -name '*.wic*' -print -quit)"
+
+      - name: Upload TF-card image
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orangepi-zero2-tf-card-image-${{ github.run_number }}
+          path: tf-card-image/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orangepi-zero2-build-diagnostics-${{ github.run_number }}
+          path: |
+            openbmc-bitbake.log
+            openbmc-build/conf/*.conf
+            openbmc-build/tmp/log/cooker/**
+            openbmc-build/tmp/work/**/temp/log.do_*
+          if-no-files-found: warn
+          retention-days: 7

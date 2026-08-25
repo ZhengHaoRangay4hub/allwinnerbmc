@@ -1,0 +1,53 @@
+MACHINE ??= "orangepi-zero2"
+DISTRO ?= "openbmc-phosphor"
+PACKAGE_CLASSES ?= "package_ipk"
+
+SANITY_TESTED_DISTROS:append ?= " *"
+EXTRA_IMAGE_FEATURES ?= "allow-root-login"
+USER_CLASSES ?= "buildstats"
+PATCHRESOLVE = "noop"
+CONF_VERSION = "2"
+MACHINE_FEATURES_OPTED_OUT = "qemu-usermode"
+
+# These are provided as Yocto native recipes during the build on this shared
+# host.  Mark the absent system copies non-fatal so BitBake can bootstrap them
+# without requiring sudo or a host package installation.
+HOSTTOOLS_NONFATAL:append = " chrpath rpcgen"
+HOSTTOOLS:remove = " chrpath rpcgen"
+
+# Keep the large Yocto work directories on the high-capacity work filesystem.
+DL_DIR ?= "/work2/acb2lyz1kv/opizero-openbmc/yocto-downloads"
+SSTATE_DIR ?= "/work2/acb2lyz1kv/opizero-openbmc/yocto-sstate"
+TMPDIR = "/tmp/acb2lyz1kv-opizero-yocto-tmp"
+
+# The shared login image has GCC 8 as /usr/bin/gcc, while this OpenBMC branch
+# requires C++20.  The site-provided GCC 12 toolchain is read-only and needs no
+# system installation; the two missing utilities are built in hosttools.
+PATH:prepend = "/work2/acb2lyz1kv/opizero-openbmc/hosttools/bin:/public/software/compiler/gcc-12.2.0/bin:"
+PERL5LIB:prepend = "/work2/acb2lyz1kv/opizero-openbmc/hosttools/perl5:"
+BB_ENV_PASSTHROUGH_ADDITIONS:append = " PERL5LIB"
+CONNECTIVITY_CHECK_URIS = ""
+
+BB_NUMBER_THREADS = "1"
+BB_NUMBER_PARSE_THREADS = "2"
+PARALLEL_MAKE = "-j1"
+
+# GCC 16's host-side generator/compiler can exceed the shared login-node
+# memory budget even when the overall BitBake job is low-parallelism.
+PARALLEL_MAKE:pn-gcc-cross-aarch64 = "-j1"
+BUILD_CFLAGS:append:pn-gcc-cross-aarch64 = " -O0 -g0"
+BUILD_CXXFLAGS:append:pn-gcc-cross-aarch64 = " -O0 -g0"
+
+# The source trees are pulled to the remote build host through the domestic
+# GitHub proxy.  Use the same proxy for remaining GitHub fetches in Yocto.
+PREMIRRORS:prepend = " \
+    git://github.com/.* https://gh-proxy.com/https://github.com/ \
+    https://github.com/.* https://gh-proxy.com/https://github.com/ \
+    http://github.com/.* https://gh-proxy.com/https://github.com/ \
+    "
+
+# The board kernel and U-Boot were downloaded and audited on the compile host.
+# externalsrc avoids a second unaccelerated fetch and keeps the build tied to
+# the exact source trees used for the standalone Orange Pi kernel build.
+EXTERNALSRC:pn-linux-orangepi = "/public/home/acb2lyz1kv/opizero-openbmc/linux-orangepi"
+EXTERNALSRC:pn-u-boot-orangepi = "/public/home/acb2lyz1kv/opizero-openbmc/u-boot-orangepi"

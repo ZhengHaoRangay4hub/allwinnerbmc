@@ -1,0 +1,40 @@
+Fix compilation with clang-16
+
+aclocal.m4 contains code that no longer compiles: missing headers and missing
+return types.
+
+Reference:
+ https://gitweb.gentoo.org/repo/gentoo.git/tree/net-ftp/ncftp/files/ncftp-3.2.7-fix-clang.patch
+
+Upstream-Status: Inappropriate [unresponsive contact email address]
+
+Signed-off-by: Yegor Yefremov <yegorslists@googlemail.com>
+Signed-off-by: Khem Raj <raj.khem@gmail.com>
+diff --git a/autoconf_local/aclocal.m4 b/autoconf_local/aclocal.m4
+--- a/autoconf_local/aclocal.m4
++++ b/autoconf_local/aclocal.m4
+@@ -3139,6 +3139,7 @@
+ #include <sys/uio.h>
+ #include <sys/socket.h>
+ #include <sys/un.h>
++#include <string.h>
+ ],[
+ struct sockaddr_un uaddr;
+ 
+@@ -3364,6 +3365,7 @@
+ #ifdef HAVE_RESOLV_H
+ #	include <resolv.h>
+ #endif
++#include <string.h>
+ ],[
+ 	/* function-body */
+ 	int len;
+@@ -6609,7 +6611,7 @@
+ 	[AC_TRY_RUN([#include <stdio.h>
+ #include <stdlib.h>
+ 	/* If setvbuf has the reversed format, exit 0. */
+-	main () {
++	int main (void) {
+ 	  /* This call has the arguments reversed.
+ 	     A reversed system may check and see that the address of main
+ 	     is not _IOLBF, _IONBF, or _IOFBF, and return nonzero.  */

@@ -1,0 +1,25 @@
+# Build outputs and Yocto caches
+build/
+build-*/
+tmp/
+downloads/
+sstate-cache/
+deploy/
+*.o
+*.a
+*.so
+*.tmp
+*.swp
+
+# Local/private material
+*.pem
+*.key
+id_rsa*
+.env
+._*
+
+# Large source/build trees are intentionally kept outside this repository.
+kernel/
+u-boot/
+toolchains/
+

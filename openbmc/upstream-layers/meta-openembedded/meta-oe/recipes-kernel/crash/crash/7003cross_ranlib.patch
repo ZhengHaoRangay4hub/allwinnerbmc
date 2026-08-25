@@ -1,0 +1,23 @@
+From 72921a32cc2c1df390265e8c4e205bc5ba2b985d Mon Sep 17 00:00:00 2001
+From: leimaohui <leimaohui@cn.fujitsu.com>
+Date: Mon, 12 Jan 2015 11:52:35 +0800
+Subject: [PATCH] crash: add new recipe
+
+Upstream-Status: Pending
+Signed-off-by: Robert.Berger <Robert.Berger@ReliableEmbeddedSystems.com>
+---
+ Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Makefile b/Makefile
+index 58b1326..f2c945a 100644
+--- a/Makefile
++++ b/Makefile
+@@ -349,6 +349,7 @@ gdb_patch:
+ 
+ library: ${OBJECT_FILES}
+ 	ar -rs ${PROGRAM}lib.a ${OBJECT_FILES}
++	${RANLIB} ${PROGRAM}lib.a 
+ 
+ gdb: force
+ 	rm -f ${GDB_OFILES}

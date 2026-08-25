@@ -1,0 +1,39 @@
+Upstream-Status: Pending
+
+diff --git a/Makefile.in b/Makefile.in
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -302,7 +302,7 @@
+ # NOTE: you may have to edit the configure.ac script to get this to
+ # work on your operating system.  Please send feedback to the author
+ $(LIB_SL) : $(OBJS_SL) $(NORMAL_OBJS_SL)
+-	$(CC) -shared -Wl,-soname,libdmalloc.so.5 -o $@ $(OBJS_SL) $(NORMAL_OBJS_SL)
++	$(CC) $(LDFLAGS) -shared -Wl,-soname,libdmalloc.so.5 -o $@ $(OBJS_SL) $(NORMAL_OBJS_SL)
+ 
+ $(LIBRARY) : $(OBJS) $(NORMAL_OBJS)
+ 	ar cr $@ $?
+@@ -313,21 +313,21 @@
+ 	@RANLIB@ $@
+ 
+ $(LIB_TH_SL) : $(OBJS_SL) $(THREAD_OBJS_SL)
+-	$(CC) -shared -Wl,-soname,libdmallocth.so.5 -o $@ $(OBJS_SL) $(THREAD_OBJS_SL)
++	$(CC) $(LDFLAGS) -shared -Wl,-soname,libdmallocth.so.5 -o $@ $(OBJS_SL) $(THREAD_OBJS_SL)
+ 
+ $(LIB_CXX) : $(OBJS) $(NORMAL_OBJS) $(CXX_OBJS)
+ 	ar cr $@ $?
+ 	@RANLIB@ $@
+ 
+ $(LIB_CXX_SL) : $(OBJS_SL) $(NORMAL_OBJS_SL) $(CXX_OBJS_SL)
+-	$(CC) -shared -Wl,-soname,libdmalloccxx.so.5 -o $@ $(OBJS_SL) $(NORMAL_OBJS_SL) $(CXX_OBJS_SL)
++	$(CC) $(LDFLAGS) -shared -Wl,-soname,libdmalloccxx.so.5 -o $@ $(OBJS_SL) $(NORMAL_OBJS_SL) $(CXX_OBJS_SL)
+ 
+ $(LIB_TH_CXX) : $(OBJS) $(THREAD_OBJS) $(CXX_OBJS)
+ 	ar cr $@ $?
+ 	@RANLIB@ $@
+ 
+ $(LIB_TH_CXX_SL) : $(OBJS_SL) $(THREAD_OBJS_SL) $(CXX_OBJS_SL)
+-	$(CC) -shared -Wl,-soname,libdmallocthcxx.so.5 -o $@ $(OBJS_SL) $(THREAD_OBJS_SL) $(CXX_OBJS_SL)
++	$(CC) $(LDFLAGS) -shared -Wl,-soname,libdmallocthcxx.so.5 -o $@ $(OBJS_SL) $(THREAD_OBJS_SL) $(CXX_OBJS_SL)
+ 
+ threadssl : $(LIB_TH_SL)$(ver)
+ 

@@ -1,0 +1,40 @@
+From 7f6a104a682d59f28f7df889129f4467cc45e912 Mon Sep 17 00:00:00 2001
+From: Khem Raj <raj.khem@gmail.com>
+Date: Wed, 6 Nov 2019 19:55:42 -0800
+Subject: [PATCH] Depend on haveuint128.h for umult64.c
+
+This fixes parallel build issue e.g.
+mult/umult64.c:9:10: fatal error: 'haveuint128.h' file not found
+         ^~~~~~~~~~~~~~~
+
+Upstream-Status: Pending
+Signed-off-by: Khem Raj <raj.khem@gmail.com>
+---
+ GNUmakefile | 2 +-
+ Makefile    | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/GNUmakefile b/GNUmakefile
+--- a/GNUmakefile
++++ b/GNUmakefile
+@@ -753,7 +753,7 @@
+ range_strinbuf.o: mult/range_strinbuf.c rangecheck.h libowfat/compiler.h
+ umult16.o: mult/umult16.c uint16.h
+ umult32.o: mult/umult32.c uint32.h
+-umult64.o: mult/umult64.c uint64.h
++umult64.o: mult/umult64.c uint64.h haveuint128.h
+ open_append.o: open/open_append.c open.h libowfat/compiler.h
+ open_excl.o: open/open_excl.c open.h libowfat/compiler.h
+ open_read.o: open/open_read.c open.h libowfat/compiler.h
+diff --git a/Makefile b/Makefile
+--- a/Makefile
++++ b/Makefile
+@@ -690,7 +690,7 @@
+ range_strinbuf.o: mult/range_strinbuf.c rangecheck.h libowfat/compiler.h
+ umult16.o: mult/umult16.c uint16.h
+ umult32.o: mult/umult32.c uint32.h
+-umult64.o: mult/umult64.c uint64.h
++umult64.o: mult/umult64.c uint64.h haveuint128.h
+ open_append.o: open/open_append.c open.h libowfat/compiler.h
+ open_excl.o: open/open_excl.c open.h libowfat/compiler.h
+ open_read.o: open/open_read.c open.h libowfat/compiler.h

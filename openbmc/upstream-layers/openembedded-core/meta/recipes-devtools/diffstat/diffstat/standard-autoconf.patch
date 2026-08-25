@@ -1,0 +1,51 @@
+From c6a700c79fcfba21b261cfa99e5e78ee3341c7ac Mon Sep 17 00:00:00 2001
+From: Ross Burton <ross.burton@arm.com>
+Date: Wed, 18 Mar 2026 11:27:24 +0000
+Subject: [PATCH] Use standard autoconf
+
+diffstat uses a fork of autoconf which we don't package but we need to autoreconf
+the configure.in because it has buggy macros.
+
+Delete the hand-coded config_h.in so that autoheader runs, and use the standard
+form of AC_OUTPUT.
+
+Upstream-Status: Inappropriate
+Signed-off-by: Ross Burton <ross.burton@arm.com>
+
+Refresh for version 1.69
+Fix configure.in:88: error: undefined or overquoted macro: AC_SETUP_DEFS
+Signed-off-by: Changqing Li <changqing.li@windriver.com>
+---
+ config_h.in  | 8 --------
+ configure.in | 1 -
+ 2 files changed, 9 deletions(-)
+ delete mode 100644 config_h.in
+
+diff --git a/config_h.in b/config_h.in
+deleted file mode 100644
+index ac8ff1d..0000000
+--- a/config_h.in
++++ /dev/null
+@@ -1,8 +0,0 @@
+-/* 
+- * $Id: config_h.in,v 1.1 1994/06/12 23:48:18 tom Exp $
+- * config_h.in is a template file used by configure to produce config.h.
+- * config_h is then transformed (by config.status) into the header file 
+- * config.h -- Kevin Buettner.
+- */
+-
+-@DEFS@
+diff --git a/configure.in b/configure.in
+index 24dfbb9..5da5d89 100644
+--- a/configure.in
++++ b/configure.in
+@@ -85,6 +85,5 @@ CF_DISABLE_LEAKS
+ 
+ ###	output makefile and config.h
+ AC_CONFIG_FILES([makefile])
+-AC_SETUP_DEFS([cat])
+ AC_OUTPUT
+ CF_MAKE_DOCS(diffstat,1)
+-- 
+2.53.0
+
