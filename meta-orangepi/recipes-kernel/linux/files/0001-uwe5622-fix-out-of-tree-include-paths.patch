@@ -10,15 +10,15 @@ the path from srctree instead.
 
 Upstream-Status: Inappropriate [board-port build fix]
 ---
- drivers/net/wireless/uwe5622/Makefile          | 2 +-
- drivers/net/wireless/uwe5622/unisocwcn/Makefile | 8 ++++----
- 2 files changed, 5 insertions(+), 5 deletions(-)
+ drivers/net/wireless/uwe5622/Makefile           | 2 +-
+ drivers/net/wireless/uwe5622/unisocwcn/Makefile | 5 ++++--
+ 2 files changed, 5 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/net/wireless/uwe5622/Makefile b/drivers/net/wireless/uwe5622/Makefile
 index 7b9e0a6..f4b0f6d 100644
 --- a/drivers/net/wireless/uwe5622/Makefile
 +++ b/drivers/net/wireless/uwe5622/Makefile
-@@ -3,7 +3,7 @@ obj-$(CONFIG_WLAN_UWE5622)    += unisocwifi/
+@@ -3,6 +3,6 @@ obj-$(CONFIG_WLAN_UWE5622)    += unisocwifi/
  obj-$(CONFIG_TTY_OVERY_SDIO)  += tty-sdio/
  
 -UNISOCWCN_DIR := $(shell cd $(src)/unisocwcn/ && /bin/pwd)
@@ -30,7 +30,7 @@ diff --git a/drivers/net/wireless/uwe5622/unisocwcn/Makefile b/drivers/net/wirel
 index 3e5e4a0..7f4a6d1 100644
 --- a/drivers/net/wireless/uwe5622/unisocwcn/Makefile
 +++ b/drivers/net/wireless/uwe5622/unisocwcn/Makefile
-@@ -102,9 +102,9 @@ endif
+@@ -129,9 +129,10 @@
  ccflags-y += -DCONFIG_WCN_UTILS
  
  #### include path ######
@@ -46,4 +46,3 @@ index 3e5e4a0..7f4a6d1 100644
  ### ---------- Hisilicon start ---------- ###
 -- 
 2.43.0
-
