@@ -103,6 +103,9 @@ jobs:
 
           make -C u-boot-orangepi O="$GITHUB_WORKSPACE/u-boot-build" \
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- orangepi_zero2_defconfig
+          mkdir -p "$GITHUB_WORKSPACE/u-boot-build/include/asm"
+          ln -sfn "$GITHUB_WORKSPACE/u-boot-orangepi/arch/arm/include/asm/arch-sunxi" \
+            "$GITHUB_WORKSPACE/u-boot-build/include/asm/arch"
           make -C u-boot-orangepi O="$GITHUB_WORKSPACE/u-boot-build" \
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j4
 
