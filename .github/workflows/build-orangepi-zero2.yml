@@ -119,6 +119,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           cp -a meta-orangepi openbmc/meta-orangepi
+          git -C openbmc apply \
+            "$GITHUB_WORKSPACE/meta-orangepi/files/0001-github-actions-skip-userns-sanity-check.patch"
           mkdir -p yocto-downloads yocto-sstate
 
           cd openbmc

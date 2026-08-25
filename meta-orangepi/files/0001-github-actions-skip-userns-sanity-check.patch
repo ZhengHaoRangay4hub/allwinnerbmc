@@ -1,0 +1,26 @@
+From 7c4b86c6f0a34e37e28f41f0f60ecbdbf9e5c6a1 Mon Sep 17 00:00:00 2001
+From: Orange Pi OpenBMC Port <port@example.invalid>
+Date: Tue, 25 Aug 2026 19:20:00 +0000
+Subject: [PATCH] sanity: skip user namespace check on GitHub Actions
+
+GitHub-hosted Ubuntu runners disallow unprivileged user namespaces through
+the host security policy.  The check is not actionable inside the runner,
+so skip it for this CI image and continue with the normal build.
+
+Upstream-Status: Inappropriate [CI environment workaround]
+---
+ upstream-layers/openembedded-core/meta/classes-global/sanity.bbclass | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/upstream-layers/openembedded-core/meta/classes-global/sanity.bbclass b/upstream-layers/openembedded-core/meta/classes-global/sanity.bbclass
+index 0000000..0000000 100644
+--- a/upstream-layers/openembedded-core/meta/classes-global/sanity.bbclass
++++ b/upstream-layers/openembedded-core/meta/classes-global/sanity.bbclass
+@@ -716,4 +716,3 @@ def check_sanity(sanity_data):
+     status.addresult(check_perl_modules(d))
+     status.addresult(check_wsl(d))
+-    status.addresult(check_userns())
+ 
+     missing = ""
+-- 
+2.43.0
