@@ -102,14 +102,14 @@ jobs:
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j4 Image dtbs
 
           make -C u-boot-orangepi O="$GITHUB_WORKSPACE/u-boot-build" \
-            ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- orangepi_zero2_defconfig
+            ARCH=arm CROSS_COMPILE=aarch64-linux-gnu- orangepi_zero2_defconfig
           mkdir -p "$GITHUB_WORKSPACE/u-boot-build/include/asm"
           ln -sfn "$GITHUB_WORKSPACE/u-boot-orangepi/arch/arm/include/asm/arch-sunxi" \
             "$GITHUB_WORKSPACE/u-boot-build/include/asm/arch"
           ln -sfn arch-sunxi \
             "$GITHUB_WORKSPACE/u-boot-orangepi/arch/arm/include/asm/arch"
           make -C u-boot-orangepi O="$GITHUB_WORKSPACE/u-boot-build" \
-            ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j4
+            ARCH=arm CROSS_COMPILE=aarch64-linux-gnu- -j4
 
           cp "$GITHUB_WORKSPACE/linux-build/.config" \
             "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/defconfig"

@@ -16,6 +16,7 @@ LIC_FILES_CHKSUM = "file://Licenses/README;md5=5a7450c57ffe5ae63fd732446b988025"
 inherit externalsrc
 
 COMPATIBLE_MACHINE = "orangepi-zero2"
+UBOOT_ARCH = "arm"
 UBOOT_BINARY = "u-boot-sunxi-with-spl.bin"
 UBOOT_MAKE_TARGET = "all"
 B = "${WORKDIR}/build"
