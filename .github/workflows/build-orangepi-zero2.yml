@@ -94,6 +94,10 @@ jobs:
           set -Eeuo pipefail
           make -C linux-orangepi O="$GITHUB_WORKSPACE/linux-build" \
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- linux_sunxi64_defconfig
+          linux-orangepi/scripts/config --file "$GITHUB_WORKSPACE/linux-build/.config" \
+            -e MFD_AC200
+          make -C linux-orangepi O="$GITHUB_WORKSPACE/linux-build" \
+            ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           make -C linux-orangepi O="$GITHUB_WORKSPACE/linux-build" \
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j4 Image dtbs
 
@@ -101,6 +105,9 @@ jobs:
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- orangepi_zero2_defconfig
           make -C u-boot-orangepi O="$GITHUB_WORKSPACE/u-boot-build" \
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j4
+
+          cp "$GITHUB_WORKSPACE/linux-build/.config" \
+            "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/defconfig"
 
       - name: Prepare OpenBMC board layer and local sources
         shell: bash
