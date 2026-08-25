@@ -121,6 +121,9 @@ jobs:
           cp -a meta-orangepi openbmc/meta-orangepi
           git -C openbmc apply \
             "$GITHUB_WORKSPACE/meta-orangepi/files/0001-github-actions-skip-userns-sanity-check.patch"
+          sanity_file="$GITHUB_WORKSPACE/openbmc/upstream-layers/openembedded-core/meta/classes-global/sanity.bbclass"
+          sed -i '/^[[:space:]]*status.addresult(check_userns())[[:space:]]*$/d' "$sanity_file"
+          ! rg -n 'status\.addresult\(check_userns\(\)\)' "$sanity_file"
           mkdir -p yocto-downloads yocto-sstate
 
           cd openbmc
