@@ -125,9 +125,16 @@ jobs:
             "$GITHUB_WORKSPACE/meta-orangepi/files/0002-github-actions-skip-bitbake-network-isolation.patch"
           sanity_file="$GITHUB_WORKSPACE/openbmc/upstream-layers/openembedded-core/meta/classes-global/sanity.bbclass"
           sed -i '/^[[:space:]]*status.addresult(check_userns())[[:space:]]*$/d' "$sanity_file"
-          ! grep -n 'status\.addresult(check_userns())' "$sanity_file"
+          if grep -n 'status\.addresult(check_userns())' "$sanity_file"; then
+            echo 'user namespace sanity check was not removed'
+            exit 1
+          fi
           worker_file="$GITHUB_WORKSPACE/openbmc/upstream-layers/bitbake/bin/bitbake-worker"
-          ! grep -n "getVarFlag(taskname, 'network')" "$worker_file"
+          sed -i "/if not bb.utils.to_boolean(the_data.getVarFlag(taskname, 'network')):/c\\                if False:" "$worker_file"
+          if grep -n "getVarFlag(taskname, 'network')" "$worker_file"; then
+            echo 'BitBake worker network isolation was not disabled'
+            exit 1
+          fi
           mkdir -p yocto-downloads yocto-sstate
 
           cd openbmc
