@@ -121,9 +121,13 @@ jobs:
           cp -a meta-orangepi openbmc/meta-orangepi
           git -C openbmc apply \
             "$GITHUB_WORKSPACE/meta-orangepi/files/0001-github-actions-skip-userns-sanity-check.patch"
+          git -C openbmc apply \
+            "$GITHUB_WORKSPACE/meta-orangepi/files/0002-github-actions-skip-bitbake-network-isolation.patch"
           sanity_file="$GITHUB_WORKSPACE/openbmc/upstream-layers/openembedded-core/meta/classes-global/sanity.bbclass"
           sed -i '/^[[:space:]]*status.addresult(check_userns())[[:space:]]*$/d' "$sanity_file"
-          ! rg -n 'status\.addresult\(check_userns\(\)\)' "$sanity_file"
+          ! grep -n 'status\.addresult(check_userns())' "$sanity_file"
+          worker_file="$GITHUB_WORKSPACE/openbmc/upstream-layers/bitbake/bin/bitbake-worker"
+          ! grep -n "getVarFlag(taskname, 'network')" "$worker_file"
           mkdir -p yocto-downloads yocto-sstate
 
           cd openbmc

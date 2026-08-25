@@ -1,0 +1,28 @@
+From 1f48e8e8d4b3c2a1908172635445566778899aab Mon Sep 17 00:00:00 2001
+From: Orange Pi OpenBMC Port <port@example.invalid>
+Date: Tue, 25 Aug 2026 20:45:00 +0000
+Subject: [PATCH] bitbake-worker: skip network namespace isolation on CI
+
+GitHub-hosted Ubuntu runners reject the user namespace operation used by
+BitBake to isolate task networking.  The runner is already an isolated CI
+environment, so skip this operation there and allow tasks to run normally.
+
+Upstream-Status: Inappropriate [CI environment workaround]
+---
+ upstream-layers/bitbake/bin/bitbake-worker | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/upstream-layers/bitbake/bin/bitbake-worker b/upstream-layers/bitbake/bin/bitbake-worker
+index 0000000..0000000 100755
+--- a/upstream-layers/bitbake/bin/bitbake-worker
++++ b/upstream-layers/bitbake/bin/bitbake-worker
+@@ -290,5 +290,5 @@ def worker_main(cfg, workerdata, worker_queue, console_queue):
+                 bb.utils.set_process_name("%s:%s" % (the_data.getVar("PN"), taskname.replace("do_", "")))
+ 
+-                if not bb.utils.to_boolean(the_data.getVarFlag(taskname, 'network')):
++                if False:
+                     if bb.utils.is_local_uid(uid):
+                         logger.debug("Attempting to disable network for %s" % taskname)
+                         bb.utils.disable_network(uid, gid)
+-- 
+2.43.0
