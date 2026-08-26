@@ -9,7 +9,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: orangepi-zero2-${{ github.ref }}
+  # Keep each commit independently schedulable.  A runner that is already
+  # being torn down must not block the corrected build indefinitely.
+  group: orangepi-zero2-${{ github.workflow }}-${{ github.sha }}
   # A long Yocto build must not receive SIGTERM just because another
   # workflow run was queued for the same branch.  Let the active build
   # finish and use the persisted sstate cache on the next run.
