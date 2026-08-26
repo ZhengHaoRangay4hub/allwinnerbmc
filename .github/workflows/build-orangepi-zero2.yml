@@ -210,7 +210,7 @@ jobs:
           if [ "$bitbake_rc" -eq 124 ] || [ "$bitbake_rc" -eq 143 ]; then
             echo "Checkpoint $CHECKPOINT_NUMBER reached; completed sstate will be saved."
             echo 'checkpointed=true' >> "$GITHUB_OUTPUT"
-            exit 1
+            exit 0
           fi
 
           echo 'checkpointed=false' >> "$GITHUB_OUTPUT"
@@ -229,7 +229,9 @@ jobs:
           key: yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}-${{ github.run_id }}
 
       - name: Collect TF-card image and checksums
-        if: success()
+        if: >-
+          success() &&
+          steps.build_image.outputs.checkpointed != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -247,7 +249,9 @@ jobs:
           test -n "$(find "$out" -type f -name '*.wic*' -print -quit)"
 
       - name: Upload TF-card image
-        if: success()
+        if: >-
+          success() &&
+          steps.build_image.outputs.checkpointed != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: orangepi-zero2-tf-card-image-${{ github.run_number }}
@@ -272,7 +276,7 @@ jobs:
     name: Continue checkpointed Yocto build
     needs: build
     if: >-
-      needs.build.result == 'failure' &&
+      needs.build.result == 'success' &&
       needs.build.outputs.checkpointed == 'true' &&
       fromJSON(inputs.checkpoint || '0') < 5
     runs-on: ubuntu-24.04
