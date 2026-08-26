@@ -96,7 +96,8 @@ jobs:
           clone_ref orangepi-xunlong/u-boot-orangepi v2021.10-sunxi u-boot-orangepi
 
           git -C linux-orangepi apply \
-            "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/0001-uwe5622-fix-out-of-tree-include-paths.patch"
+            "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/0001-uwe5622-fix-out-of-tree-include-paths.patch" \
+            "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/0002-sun50i-cpufreq-nvmem-use-opp-token-type.patch"
 
           test "$(git -C linux-orangepi rev-parse HEAD)" = \
             "$(sed -n 's/^Linux commit: //p' sources/versions.txt)"

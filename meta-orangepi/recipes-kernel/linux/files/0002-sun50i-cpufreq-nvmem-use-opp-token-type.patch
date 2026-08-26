@@ -1,0 +1,29 @@
+From 1d5e2b9f8e8d4c6b8a1c2d3e4f5061728394a5b6 Mon Sep 17 00:00:00 2001
+From: Orange Pi OpenBMC Port <port@example.invalid>
+Date: Wed, 26 Aug 2026 21:00:00 +0000
+Subject: [PATCH] cpufreq: sun50i: use the OPP property token type
+
+dev_pm_opp_set_prop_name() returns an integer token in this kernel tree.
+The vendor driver treated that token as struct opp_table *, which fails
+with the current pm_opp.h declarations and also passes the wrong type to
+dev_pm_opp_put_prop_name().
+
+Upstream-Status: Inappropriate [board-port build fix]
+---
+ drivers/cpufreq/sun50i-cpufreq-nvmem.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/cpufreq/sun50i-cpufreq-nvmem.c b/drivers/cpufreq/sun50i-cpufreq-nvmem.c
+index 7f1c2d3..8a2b4c5 100644
+--- a/drivers/cpufreq/sun50i-cpufreq-nvmem.c
++++ b/drivers/cpufreq/sun50i-cpufreq-nvmem.c
+@@ -112,6 +112,6 @@ static int sun50i_cpufreq_nvmem_probe(struct platform_device *pdev)
+ {
+ 	const struct of_device_id *match;
+-	struct opp_table **opp_tables;
++	int *opp_tables;
+ 	char name[MAX_NAME_LEN];
+ 	unsigned int cpu;
+ 	u32 speed = 0;
+-- 
+2.43.0
