@@ -108,7 +108,7 @@ jobs:
           test "$(git -C u-boot-orangepi rev-parse HEAD)" = \
             "$(sed -n 's/^U-Boot commit: //p' sources/versions.txt)"
 
-      - name: Build standalone Linux and U-Boot first
+      - name: Generate Linux defconfig for OpenBMC
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -118,18 +118,6 @@ jobs:
             -e MFD_AC200
           make -C linux-orangepi O="$GITHUB_WORKSPACE/linux-build" \
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
-          make -C linux-orangepi O="$GITHUB_WORKSPACE/linux-build" \
-            ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j4 Image dtbs
-
-          make -C u-boot-orangepi O="$GITHUB_WORKSPACE/u-boot-build" \
-            ARCH=arm CROSS_COMPILE=aarch64-linux-gnu- orangepi_zero2_defconfig
-          mkdir -p "$GITHUB_WORKSPACE/u-boot-build/include/asm"
-          ln -sfn "$GITHUB_WORKSPACE/u-boot-orangepi/arch/arm/include/asm/arch-sunxi" \
-            "$GITHUB_WORKSPACE/u-boot-build/include/asm/arch"
-          ln -sfn arch-sunxi \
-            "$GITHUB_WORKSPACE/u-boot-orangepi/arch/arm/include/asm/arch"
-          make -C u-boot-orangepi O="$GITHUB_WORKSPACE/u-boot-build" \
-            ARCH=arm CROSS_COMPILE=aarch64-linux-gnu- -j4
 
           cp "$GITHUB_WORKSPACE/linux-build/.config" \
             "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/defconfig"
@@ -247,8 +235,6 @@ jobs:
             -name '*.wic' -o -name '*.wic.xz' -o -name '*.wic.bmap' -o \
             -name 'Image*' -o -name '*.dtb' -o -name '*u-boot*' \
           \) -exec cp -a {} "$out/" \;
-          cp -a linux-build/arch/arm64/boot/Image "$out/standalone-Image"
-          cp -a linux-build/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dtb "$out/standalone-orangepi-zero2.dtb"
           sha256sum "$out"/* | sort > "$out/SHA256SUMS"
           test -n "$(find "$out" -type f -name '*.wic*' -print -quit)"
 
