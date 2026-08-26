@@ -8,25 +8,20 @@ on:
         required: false
         default: '0'
         type: string
-  push:
-    branches: [main]
 
 permissions:
   contents: read
   actions: write
 
 concurrency:
-  # Keep each commit independently schedulable.  A runner that is already
-  # being torn down must not block the corrected build indefinitely.
-  group: orangepi-zero2-${{ github.workflow }}-${{ github.sha }}
-  # A long Yocto build must not receive SIGTERM just because another
-  # workflow run was queued for the same branch.  Let the active build
-  # finish and use the persisted sstate cache on the next run.
-  cancel-in-progress: false
+  # This workflow is deliberately manual-only.  A single stable group keeps
+  # an accidental duplicate dispatch from consuming another hosted runner.
+  group: orangepi-zero2-openbmc
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: Linux, U-Boot and OpenBMC image
+    name: OpenBMC TF-card image
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     outputs:
