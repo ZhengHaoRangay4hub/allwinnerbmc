@@ -178,6 +178,18 @@ jobs:
           set -u
           bitbake obmc-phosphor-image 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-bitbake.log"
 
+      # Preserve completed Yocto work even when BitBake fails.  The next run
+      # restores this cache and reuses sstate instead of rebuilding everything.
+      - name: Save Yocto downloads and sstate after build attempt
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            yocto-downloads
+            yocto-sstate
+          key: yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}
+
       - name: Collect TF-card image and checksums
         if: success()
         shell: bash
