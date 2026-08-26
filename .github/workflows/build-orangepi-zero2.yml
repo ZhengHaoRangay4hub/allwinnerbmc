@@ -2,6 +2,12 @@ name: Orange Pi Zero 2 OpenBMC
 
 on:
   workflow_dispatch:
+    inputs:
+      checkpoint:
+        description: 'Internal checkpoint number for resumable builds'
+        required: false
+        default: '0'
+        type: string
   push:
     branches: [main]
 
