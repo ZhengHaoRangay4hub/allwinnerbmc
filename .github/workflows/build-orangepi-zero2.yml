@@ -161,6 +161,13 @@ jobs:
           CONNECTIVITY_CHECK_URIS = ""
           EOF
 
+          zlib_tar="$GITHUB_WORKSPACE/yocto-downloads/zlib-1.3.2.tar.gz"
+          zlib_expected="bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+          if [ -f "$zlib_tar" ] && [ "$(sha256sum "$zlib_tar" | awk '{print $1}')" != "$zlib_expected" ]; then
+            echo 'Removing corrupted cached zlib-1.3.2.tar.gz before BitBake fetch'
+            rm -f "$zlib_tar"
+          fi
+
       - name: Build full OpenBMC image
         shell: bash
         run: |
