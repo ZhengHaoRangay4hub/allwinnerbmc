@@ -197,11 +197,11 @@ jobs:
           set +u
           . ./oe-init-build-env "$GITHUB_WORKSPACE/openbmc-build"
           set -u
-          # Let BitBake run until the GitHub job timeout.  Do not impose a
-          # shorter shell timeout: large native tasks can legitimately make
-          # no visible progress for many minutes.
+          # Allow long native tasks to finish while leaving time for the
+          # always-run cache-save step before the GitHub job limit.
           set +e
-          bitbake obmc-phosphor-image 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-bitbake.log"
+          timeout --signal=TERM --kill-after=5m 300m \
+            bitbake obmc-phosphor-image 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-bitbake.log"
           bitbake_rc=${PIPESTATUS[0]}
           set -e
 
