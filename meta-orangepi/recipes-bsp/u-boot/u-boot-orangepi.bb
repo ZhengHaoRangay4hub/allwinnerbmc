@@ -30,13 +30,13 @@ do_configure() {
     ln -sfn ${S}/arch/arm/include/asm/arch-sunxi ${B}/include/asm/arch
     ln -sfn arch-sunxi ${S}/arch/arm/include/asm/arch
     oe_runmake -C ${S} O=${B} ARCH=${UBOOT_ARCH} \
-        CROSS_COMPILE="${TARGET_PREFIX}" ${UBOOT_MACHINE}
+        CROSS_COMPILE="${TARGET_PREFIX}" HOSTCC="${BUILD_CC}" ${UBOOT_MACHINE}
 }
 
 do_compile() {
     unset LDFLAGS CFLAGS CPPFLAGS
     oe_runmake -C ${S} O=${B} ARCH=${UBOOT_ARCH} \
-        CROSS_COMPILE="${TARGET_PREFIX}" ${UBOOT_MAKE_TARGET}
+        CROSS_COMPILE="${TARGET_PREFIX}" HOSTCC="${BUILD_CC}" ${UBOOT_MAKE_TARGET}
 }
 
 do_install[noexec] = "1"
