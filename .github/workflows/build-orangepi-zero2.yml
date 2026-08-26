@@ -207,7 +207,7 @@ jobs:
             exit 0
           fi
 
-          if [ "$bitbake_rc" -eq 124 ] || [ "$bitbake_rc" -eq 143 ]; then
+          if [ "$bitbake_rc" -eq 124 ] || [ "$bitbake_rc" -eq 137 ] || [ "$bitbake_rc" -eq 143 ]; then
             echo "Checkpoint $CHECKPOINT_NUMBER reached; completed sstate will be saved."
             echo 'checkpointed=true' >> "$GITHUB_OUTPUT"
             exit 0
