@@ -10,7 +10,10 @@ permissions:
 
 concurrency:
   group: orangepi-zero2-${{ github.ref }}
-  cancel-in-progress: true
+  # A long Yocto build must not receive SIGTERM just because another
+  # workflow run was queued for the same branch.  Let the active build
+  # finish and use the persisted sstate cache on the next run.
+  cancel-in-progress: false
 
 jobs:
   build:
