@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   # Keep each commit independently schedulable.  A runner that is already
@@ -22,11 +23,17 @@ jobs:
     name: Linux, U-Boot and OpenBMC image
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    outputs:
+      checkpointed: ${{ steps.build_image.outputs.checkpointed }}
     env:
       DEBIAN_FRONTEND: noninteractive
-      BB_NUMBER_THREADS: "24"
-      BB_NUMBER_PARSE_THREADS: "12"
-      PARALLEL_MAKE: "-j24"
+      # The standard hosted runner has four vCPUs.  Avoiding a 24-worker
+      # oversubscription keeps the runner responsive and reduces host-side
+      # pressure during the long native-toolchain phase.
+      BB_NUMBER_THREADS: "8"
+      BB_NUMBER_PARSE_THREADS: "4"
+      PARALLEL_MAKE: "-j4"
+      CHECKPOINT_NUMBER: ${{ inputs.checkpoint || '0' }}
 
     steps:
       - name: Check out port sources
@@ -66,8 +73,10 @@ jobs:
           path: |
             yocto-downloads
             yocto-sstate
-          key: yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}
+          key: yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}-${{ github.run_id }}
           restore-keys: |
+            yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}-
+            yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}
             yocto-orangepi-zero2-
 
       - name: Fetch Linux and U-Boot from GitHub
@@ -149,10 +158,10 @@ jobs:
           set -u
 
           cat >> "$GITHUB_WORKSPACE/openbmc-build/conf/local.conf" <<EOF
-          BB_NUMBER_THREADS = "24"
-          BB_NUMBER_PARSE_THREADS = "12"
-          PARALLEL_MAKE = "-j24"
-          PARALLEL_MAKE:pn-gcc-cross-aarch64 = "-j24"
+          BB_NUMBER_THREADS = "8"
+          BB_NUMBER_PARSE_THREADS = "4"
+          PARALLEL_MAKE = "-j4"
+          PARALLEL_MAKE:pn-gcc-cross-aarch64 = "-j4"
           DL_DIR = "$GITHUB_WORKSPACE/yocto-downloads"
           SSTATE_DIR = "$GITHUB_WORKSPACE/yocto-sstate"
           TMPDIR = "$GITHUB_WORKSPACE/yocto-tmp"
@@ -173,7 +182,8 @@ jobs:
             rm -f "$zlib_tar"
           fi
 
-      - name: Build full OpenBMC image
+      - name: Build full OpenBMC image (checkpointable)
+        id: build_image
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -181,7 +191,30 @@ jobs:
           set +u
           . ./oe-init-build-env "$GITHUB_WORKSPACE/openbmc-build"
           set -u
-          bitbake obmc-phosphor-image 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-bitbake.log"
+          # Hosted runners have occasionally been externally recycled during
+          # this native-task-heavy build.  Stop cleanly before that risk window
+          # so the cache-save step can preserve completed sstate.  A follow-up
+          # workflow run is dispatched below and resumes from that cache.
+          set +e
+          timeout --signal=TERM --kill-after=90s 50m \
+            bitbake obmc-phosphor-image 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-bitbake.log"
+          bitbake_rc=${PIPESTATUS[0]}
+          set -e
+
+          deploy="$GITHUB_WORKSPACE/openbmc-build/tmp/deploy/images/orangepi-zero2"
+          if find "$deploy" -maxdepth 1 -type f -name '*.wic*' -print -quit 2>/dev/null | grep -q .; then
+            echo 'checkpointed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$bitbake_rc" -eq 124 ] || [ "$bitbake_rc" -eq 143 ]; then
+            echo "Checkpoint $CHECKPOINT_NUMBER reached; completed sstate will be saved."
+            echo 'checkpointed=true' >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo 'checkpointed=false' >> "$GITHUB_OUTPUT"
+          exit "$bitbake_rc"
 
       # Preserve completed Yocto work even when BitBake fails.  The next run
       # restores this cache and reuses sstate instead of rebuilding everything.
@@ -193,7 +226,7 @@ jobs:
           path: |
             yocto-downloads
             yocto-sstate
-          key: yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}
+          key: yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}-${{ github.run_id }}
 
       - name: Collect TF-card image and checksums
         if: success()
@@ -234,3 +267,24 @@ jobs:
             openbmc-build/tmp/work/**/temp/log.do_*
           if-no-files-found: warn
           retention-days: 7
+
+  continue-checkpointed-build:
+    name: Continue checkpointed Yocto build
+    needs: build
+    if: >-
+      needs.build.result == 'failure' &&
+      needs.build.outputs.checkpointed == 'true' &&
+      fromJSON(inputs.checkpoint || '0') < 5
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dispatch next checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECKPOINT_NUMBER: ${{ inputs.checkpoint || '0' }}
+        run: |
+          set -Eeuo pipefail
+          next_checkpoint=$((CHECKPOINT_NUMBER + 1))
+          gh workflow run build-orangepi-zero2.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f checkpoint="$next_checkpoint"
