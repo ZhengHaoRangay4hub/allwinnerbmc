@@ -197,12 +197,11 @@ jobs:
           set +u
           . ./oe-init-build-env "$GITHUB_WORKSPACE/openbmc-build"
           set -u
-          # Hosted runners have occasionally been externally recycled during
-          # this native-task-heavy build.  Stop cleanly before that risk window
-          # so the cache-save step can preserve completed sstate.  A follow-up
-          # workflow run is dispatched below and resumes from that cache.
+          # Keep one checkpoint long enough for the largest native tasks to
+          # finish.  A follow-up workflow run remains available if the hosted
+          # runner is recycled or the build reaches the checkpoint.
           set +e
-          timeout --signal=TERM --kill-after=90s 50m \
+          timeout --signal=TERM --kill-after=90s 150m \
             bitbake obmc-phosphor-image 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-bitbake.log"
           bitbake_rc=${PIPESTATUS[0]}
           set -e
