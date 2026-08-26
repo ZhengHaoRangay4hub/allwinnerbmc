@@ -273,7 +273,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           next_checkpoint=$((CHECKPOINT_NUMBER + 1))
-          gh workflow run build-orangepi-zero2.yml \
+          gh workflow run build-orangepi-zero2-image.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f checkpoint="$next_checkpoint"
