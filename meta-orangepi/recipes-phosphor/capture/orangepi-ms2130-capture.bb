@@ -1,6 +1,7 @@
 SUMMARY = "MS2130 USB UVC frame capture service"
 DESCRIPTION = "Captures MJPEG frames from an MS2130-compatible USB video device."
 LICENSE = "Apache-2.0"
+LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/Apache-2.0;md5=89aea4e17d99a7cacdbeed46a0096b10"
 
 SRC_URI = " \
     file://ms2130-capture.c \
