@@ -40,13 +40,14 @@ repositories and commits used for the Linux, U-Boot, and OpenBMC trees.
 
 The workflow is defined in
 [`build-orangepi-zero2.yml`](.github/workflows/build-orangepi-zero2.yml). It
-builds standalone Linux and U-Boot first, then builds the full OpenBMC image
-and uploads the TF-card image as an artifact.
+prepares the board Linux configuration, then lets BitBake build the complete
+OpenBMC image (including the boot components required inside that image) and
+uploads one directly flashable `.wic` TF-card image plus `SHA256SUMS`.
 
 工作流位于
-[`build-orangepi-zero2.yml`](.github/workflows/build-orangepi-zero2.yml)。它会先编译
-独立 Linux 和 U-Boot，再编译完整 OpenBMC，并将 TF 卡镜像作为 Actions artifact
-上传。
+[`build-orangepi-zero2.yml`](.github/workflows/build-orangepi-zero2.yml)。它先准备板级
+Linux 配置，然后由 BitBake 编译完整 OpenBMC（镜像内部仍包含启动所必需的启动组件），
+最后上传一个可直接烧录的 `.wic` TF 卡镜像及 `SHA256SUMS`。
 
 ## Local build / 本地构建
 

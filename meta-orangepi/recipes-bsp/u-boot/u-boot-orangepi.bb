@@ -14,11 +14,11 @@ PROVIDES = "virtual/bootloader"
 ALLOW_EMPTY:${PN} = "1"
 RPROVIDES:${PN} += "u-boot-fw-utils"
 
-inherit externalsrc deploy
+inherit externalsrc deploy python3native
 
-# U-Boot's Kconfig parser is generated during do_configure.  These tools
-# must be present in the BitBake native sysroot, not only installed on the
-# GitHub Actions host.
+# U-Boot's Kconfig parser and pylibfdt binding are generated during the
+# build. These tools must come from the BitBake native sysroot, including
+# the Python interpreter used by pylibfdt, rather than only the CI host.
 DEPENDS += "bison-native flex-native swig-native"
 
 COMPATIBLE_MACHINE = "orangepi-zero2"

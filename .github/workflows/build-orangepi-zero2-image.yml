@@ -155,6 +155,14 @@ jobs:
           DL_DIR = "$GITHUB_WORKSPACE/yocto-downloads"
           SSTATE_DIR = "$GITHUB_WORKSPACE/yocto-sstate"
           TMPDIR = "$GITHUB_WORKSPACE/yocto-tmp"
+          # GitHub-hosted runners have direct Internet access. Do not carry
+          # the domestic proxy from the shared-cluster local.conf template
+          # into this workflow.
+          PREMIRRORS = ""
+          MIRRORS = ""
+          # The vendored OpenBMC tree has no separate .git directory. Use
+          # the checked-out repository for OpenBMC version metadata.
+          OS_RELEASE_ROOTPATH = "$GITHUB_WORKSPACE"
           HOSTTOOLS_NONFATAL:append = " chrpath rpcgen"
           HOSTTOOLS:remove = " chrpath rpcgen"
           BBPATH:prepend = "$GITHUB_WORKSPACE/openbmc/upstream-layers/openembedded-core/meta:"
@@ -190,7 +198,7 @@ jobs:
           set -e
 
           deploy="$GITHUB_WORKSPACE/openbmc-build/tmp/deploy/images/orangepi-zero2"
-          if find "$deploy" -maxdepth 1 -type f -name '*.wic*' -print -quit 2>/dev/null | grep -q .; then
+          if find "$deploy" -maxdepth 1 -type f -name '*.wic' -print -quit 2>/dev/null | grep -q .; then
             echo 'checkpointed=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -227,12 +235,11 @@ jobs:
           out="$GITHUB_WORKSPACE/tf-card-image"
           test -d "$deploy"
           mkdir -p "$out"
-          find "$deploy" -maxdepth 1 -type f \( \
-            -name '*.wic' -o -name '*.wic.xz' -o -name '*.wic.bmap' -o \
-            -name 'Image*' -o -name '*.dtb' -o -name '*u-boot*' \
-          \) -exec cp -a {} "$out/" \;
+          # The deliverable is the complete, directly flashable SD image.
+          find "$deploy" -maxdepth 1 -type f -name '*.wic' \
+            -exec cp -a {} "$out/" \;
           sha256sum "$out"/* | sort > "$out/SHA256SUMS"
-          test -n "$(find "$out" -type f -name '*.wic*' -print -quit)"
+          test -n "$(find "$out" -type f -name '*.wic' -print -quit)"
 
       - name: Upload TF-card image
         if: >-
