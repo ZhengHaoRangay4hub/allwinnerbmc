@@ -16,6 +16,11 @@ RPROVIDES:${PN} += "u-boot-fw-utils"
 
 inherit externalsrc deploy
 
+# U-Boot's Kconfig parser is generated during do_configure.  These tools
+# must be present in the BitBake native sysroot, not only installed on the
+# GitHub Actions host.
+DEPENDS += "bison-native flex-native"
+
 COMPATIBLE_MACHINE = "orangepi-zero2"
 UBOOT_ARCH = "arm"
 UBOOT_BINARY = "u-boot-sunxi-with-spl.bin"
