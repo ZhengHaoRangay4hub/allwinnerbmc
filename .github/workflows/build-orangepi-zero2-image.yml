@@ -58,7 +58,7 @@ jobs:
             bc bison build-essential chrpath cpio device-tree-compiler diffstat \
             flex gawk gcc-aarch64-linux-gnu git libelf-dev liblz4-tool \
             libncurses-dev libssl-dev locales lz4 make patch \
-            python3 python3-pip python3-pexpect python3-git python3-jinja2 \
+            python3 python3-pip python3-setuptools python3-pexpect python3-git python3-jinja2 \
             python3-subunit rsync socat texinfo unzip wget xterm zstd
           sudo apt-get install -y --no-install-recommends u-boot-tools
 
@@ -94,6 +94,9 @@ jobs:
 
           clone_ref orangepi-xunlong/linux-orangepi orange-pi-6.1-sun50iw9 linux-orangepi
           clone_ref orangepi-xunlong/u-boot-orangepi v2021.10-sunxi u-boot-orangepi
+
+          git -C u-boot-orangepi apply \
+            "$GITHUB_WORKSPACE/meta-orangepi/recipes-bsp/u-boot/files/0001-pylibfdt-use-setuptools-on-modern-python.patch"
 
           git -C linux-orangepi apply \
             "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/0001-uwe5622-fix-out-of-tree-include-paths.patch" \

@@ -1,0 +1,29 @@
+From: OpenBMC Orange Pi maintainers <openbmc@example.invalid>
+Subject: pylibfdt: use setuptools after distutils removal
+
+Python 3.12 and later no longer provide distutils.  The U-Boot 2021.10
+pylibfdt helper only needs setup and Extension, both of which are provided
+by setuptools on the build host.
+
+Upstream-Status: Inappropriate [version-specific OpenBMC integration]
+
+---
+ scripts/dtc/pylibfdt/setup.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/scripts/dtc/pylibfdt/setup.py b/scripts/dtc/pylibfdt/setup.py
+index 0000000..0000000 100644
+--- a/scripts/dtc/pylibfdt/setup.py
++++ b/scripts/dtc/pylibfdt/setup.py
+@@ -18,7 +18,10 @@
+     ./pylibfdt/setup.py install [--prefix=...]
+ """
+
+-from distutils.core import setup, Extension
++try:
++    from setuptools import setup, Extension
++except ImportError:
++    from distutils.core import setup, Extension
+ import os
+ import re
+ import sys
