@@ -19,7 +19,7 @@ inherit externalsrc deploy python3native
 # U-Boot's Kconfig parser and pylibfdt binding are generated during the
 # build. These tools must come from the BitBake native sysroot, including
 # the Python interpreter used by pylibfdt, rather than only the CI host.
-DEPENDS += "bison-native flex-native swig-native"
+DEPENDS += "bison-native flex-native swig-native python3-setuptools-native"
 
 COMPATIBLE_MACHINE = "orangepi-zero2"
 UBOOT_ARCH = "arm"
