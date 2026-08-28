@@ -75,6 +75,26 @@ BL31 使用 `sun50i_h616` 平台编译，作为内部依赖放入 TF 卡 8 KiB �
 OpenBMC 根文件系统，`/dev/mmcblk0p2` 根分区参数无需 initramfs 解析。
 工作流不再单独上传 Linux/U-Boot 交付物。
 
+Before uploading, the workflow checks the MBR partition layout, the SPL at
+8 KiB and its checksum, the embedded U-Boot/BL31 FIT payloads, the boot files,
+and the ext4 filesystem. It also verifies that the root filesystem contains
+OpenBMC, AArch64 systemd/bmcweb, and the Web UI. A `.verification.json` report
+accompanies the image. These checks do not replace boot testing on physical
+512 MB and 1 GB boards.
+
+上传前，工作流会检查 MBR 分区、8 KiB 处的 SPL 及其校验和、内嵌的 U-Boot/BL31
+FIT 数据、启动文件和 ext4 文件系统，并确认根文件系统包含 OpenBMC、AArch64 版
+systemd/bmcweb 及 Web UI。镜像附带 `.verification.json` 校验报告。
+这些检查不能替代 512 MB 和 1 GB 实板的启动测试。
+
+To repeat the read-only checks on an existing image, install Python 3.11+,
+`mtools`, `device-tree-compiler`, and `e2fsprogs`, then run:
+复查已有镜像时，安装上述工具后执行（不挂载镜像，也不写入 TF 卡）：
+
+```sh
+python3 scripts/verify-tf-image.py /path/to/openbmc.wic
+```
+
 ## Local build / 本地构建
 
 Use a supported x86_64 Linux build host. First follow the workflow's source

@@ -59,12 +59,17 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bc bison build-essential chrpath cpio device-tree-compiler diffstat \
+            bc bison build-essential chrpath cpio device-tree-compiler diffstat e2fsprogs \
             flex gawk gcc-aarch64-linux-gnu git libelf-dev liblz4-tool \
-            libncurses-dev libssl-dev locales lz4 make patch \
+            libncurses-dev libssl-dev locales lz4 make mtools patch \
             python3 python3-pip python3-setuptools python3-pexpect python3-git python3-jinja2 \
             python3-subunit rsync socat texinfo unzip wget xterm zstd
           sudo apt-get install -y --no-install-recommends u-boot-tools
+
+      - name: Test TF-card image verification with real filesystems
+        env:
+          OPENBMC_REQUIRE_IMAGE_TOOLS: "1"
+        run: python3 -m unittest discover -s tests -p 'test_tf_image.py' -v
 
       - name: Configure locale
         run: |
@@ -252,6 +257,10 @@ jobs:
             -exec cp -a {} "$out/" \;
           test -n "$(find "$out" -type f -name '*.wic' -print -quit)"
           (cd "$out" && sha256sum ./*.wic > SHA256SUMS && sha256sum -c SHA256SUMS)
+          for image in "$out"/*.wic; do
+            python3 "$GITHUB_WORKSPACE/scripts/verify-tf-image.py" "$image" \
+              > "function () { [native code] }.verification.json"
+          done
 
       - name: Upload TF-card image
         if: >-
