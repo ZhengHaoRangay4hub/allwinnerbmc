@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.preflight_only && 60 || 360 }}
     outputs:
-      checkpointed: ${{ steps.build_boot.outputs.checkpointed == 'true' || steps.build_image.outputs.checkpointed == 'true' }}
+      checkpointed: ${{ steps.build_boot.outputs.checkpointed == 'true' || steps.build_native_tools.outputs.checkpointed == 'true' || steps.build_image.outputs.checkpointed == 'true' }}
       cache_saved: ${{ steps.save_cache.outcome == 'success' }}
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -224,9 +224,25 @@ jobs:
           echo 'Board recipes passed preflight. This run does not produce a flashable image.' \
             >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Build reusable Node.js tools (checkpointable)
+        id: build_native_tools
+        if: "!inputs.preflight_only && success() && steps.build_boot.outputs.checkpointed != 'true'"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$GITHUB_WORKSPACE/openbmc"
+          set +u
+          . ./oe-init-build-env "$GITHUB_WORKSPACE/openbmc-build"
+          set -u
+          bash "$GITHUB_WORKSPACE/scripts/ci-build-stage.sh" native-tools
+
       - name: Build full OpenBMC image (checkpointable)
         id: build_image
-        if: "!inputs.preflight_only && success() && steps.build_boot.outputs.checkpointed != 'true'"
+        if: >-
+          !inputs.preflight_only && success() &&
+          steps.build_boot.outputs.checkpointed != 'true' &&
+          steps.build_native_tools.outcome == 'success' &&
+          steps.build_native_tools.outputs.checkpointed != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -254,7 +270,7 @@ jobs:
         if: >-
           always() &&
           !inputs.preflight_only &&
-          (steps.build_boot.outputs.checkpointed == 'true' || steps.build_image.outputs.checkpointed == 'true') &&
+          (steps.build_boot.outputs.checkpointed == 'true' || steps.build_native_tools.outputs.checkpointed == 'true' || steps.build_image.outputs.checkpointed == 'true') &&
           steps.save_cache.outcome != 'success'
         run: |
           echo '::error::The build reached its checkpoint but the cache could not be saved.'
@@ -301,6 +317,7 @@ jobs:
           name: orangepi-zero2-build-diagnostics-${{ github.run_number }}
           path: |
             openbmc-boot.log
+            openbmc-native-tools.log
             openbmc-kernel-config.log
             openbmc-bitbake.log
             openbmc-build/conf/*.conf

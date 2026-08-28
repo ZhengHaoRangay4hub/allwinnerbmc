@@ -48,7 +48,12 @@ print(os.environ.get('TEST_LOG', 'simulated BitBake'))
 rc = int(os.environ.get('TEST_BUILD_RC', '0'))
 if rc == 0 and os.environ.get('TEST_OUTPUTS', '1') == '1':
     deploy = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'yocto-tmp/deploy/images/orangepi-zero2'
-    names = ['u-boot-sunxi-with-spl.bin', 'uboot.env', 'orangepi-zero2-extlinux.conf'] if 'u-boot-orangepi' in sys.argv else ['test.wic']
+    if 'u-boot-orangepi' in sys.argv:
+        names = ['u-boot-sunxi-with-spl.bin', 'uboot.env', 'orangepi-zero2-extlinux.conf']
+    elif 'obmc-phosphor-image' in sys.argv:
+        names = ['test.wic']
+    else:
+        names = []
     for name in names:
         (deploy / name).write_bytes(b'test fixture only')
 sys.exit(rc)
@@ -83,7 +88,49 @@ sys.exit(rc)
         result = self.run_stage(OPENBMC_BUILD_DEADLINE=str(int(time.time()) + 120))
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertEqual(json.loads(self.calls.read_text()), ["-k", "obmc-phosphor-image"])
-        self.assertFalse(self.env_file.exists(), "the second stage must not reset the budget")
+        self.assertFalse(self.env_file.exists(), "later stages must not reset the budget")
+        self.assertEqual(self.checkpoint(), "checkpointed=false")
+
+    def test_native_tools_finish_sstate_without_requiring_a_flash_image(self):
+        result = self.run_stage(
+            "native-tools", TEST_OUTPUTS="0",
+            OPENBMC_BUILD_DEADLINE=str(int(time.time()) + 120),
+        )
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(json.loads(self.calls.read_text()),
+                         ["nodejs-native:do_populate_sysroot"])
+        self.assertEqual(self.checkpoint(), "checkpointed=false")
+        self.assertFalse(self.env_file.exists(), "native tools must share the boot budget")
+        self.assertFalse(list(self.deploy.glob("*.wic")))
+        self.assertIn("full image is still required", result.stdout)
+        self.assertTrue((self.workspace / "openbmc-native-tools.log").is_file())
+
+    def test_all_three_stages_share_the_original_deadline(self):
+        result = self.run_stage("boot")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        saved_env = self.env_file.read_text()
+        deadline = saved_env.strip().split("=", 1)[1]
+        for stage in ("native-tools", "image"):
+            result = self.run_stage(stage, OPENBMC_BUILD_DEADLINE=deadline)
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertEqual(self.env_file.read_text(), saved_env)
+        self.assertEqual(self.output.read_text().splitlines(), ["checkpointed=false"] * 3)
+
+    def test_native_tools_timeout_is_a_checkpoint(self):
+        result = self.run_stage("native-tools", TEST_TIMEOUT_RC="124")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(self.checkpoint(), "checkpointed=true")
+
+    def test_native_tools_recipe_failure_is_not_a_checkpoint(self):
+        result = self.run_stage("native-tools", TEST_BUILD_RC="1",
+                                TEST_LOG="ERROR: nodejs-native failed")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertEqual(self.checkpoint(), "checkpointed=false")
+
+    def test_native_tools_error_before_timeout_requires_repair(self):
+        result = self.run_stage("native-tools", TEST_TIMEOUT_RC="124",
+                                TEST_LOG="ERROR: nodejs-native failed")
+        self.assertEqual(result.returncode, 1, result.stdout)
         self.assertEqual(self.checkpoint(), "checkpointed=false")
 
     def test_recipe_failure_is_not_hidden_by_a_stale_image(self):

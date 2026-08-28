@@ -41,17 +41,18 @@ repositories and commits used for Linux, U-Boot, Trusted Firmware-A, and OpenBMC
 The workflow is defined in
 [`build-orangepi-zero2-image.yml`](.github/workflows/build-orangepi-zero2-image.yml). It
 prepares the board Linux configuration, verifies the OpenBMC boot components,
-then lets BitBake build the complete
+finishes the reusable Node.js host-tool cache, then lets BitBake build the complete
 OpenBMC image (including the boot components required inside that image) and
 uploads one directly flashable `.wic` TF-card image, `SHA256SUMS`, and a
 read-only image validation report.
 
 工作流位于
 [`build-orangepi-zero2-image.yml`](.github/workflows/build-orangepi-zero2-image.yml)。它先准备板级
-Linux 配置并检查 OpenBMC 启动组件，再由 BitBake 编译完整 OpenBMC（镜像内部仍包含启动所必需的启动组件），
+Linux 配置并检查 OpenBMC 启动组件，先完成可复用的 Node.js 主机构建工具缓存，
+再由 BitBake 编译完整 OpenBMC（镜像内部仍包含启动所必需的启动组件），
 最后上传一个可直接烧录的 `.wic` TF 卡镜像、`SHA256SUMS` 和镜像校验报告。
 
-The boot check and full-image stages share a 330-minute budget inside a
+The boot check, native-tool cache, and full-image stages share a 330-minute budget inside a
 360-minute job. The remaining 30 minutes cover setup, graceful termination,
 cache/log saving, and artifact validation/upload. A controlled timeout
 can dispatch up to five continuation runs if the cache was saved. Actual
@@ -60,12 +61,29 @@ completed sstate tasks are reusable; an unfinished compiler task does not
 resume at an instruction-level breakpoint. The full image uses `bitbake -k`
 so unrelated recipes can finish producing reusable sstate after another fails.
 
-启动检查与完整镜像编译共享 330 分钟预算，Job 上限为 360 分钟；其余 30 分钟用于
+启动检查、原生工具缓存与完整镜像编译共享 330 分钟预算，Job 上限为 360 分钟；其余 30 分钟用于
 环境准备、正常终止、保存缓存与日志，以及镜像校验和上传。正常预算到期且缓存
 保存成功时，最多自动续编五轮；真实配方错误
 及提前发生的 SIGTERM/SIGKILL 仍判为失败。可复用下载文件和已完成的 sstate 任务，
 未完成的编译任务不能在指令级断点续跑。完整镜像使用 `bitbake -k`，让不受错误影响的
 配方继续完成缓存生成。
+
+Before the full image, CI runs `bitbake nodejs-native:do_populate_sysroot`.
+This completes the Web UI's expensive host tool through its sstate-producing
+task before kernel compilation competes for the same four CPUs. It keeps
+`PARALLEL_MAKE=-j4`; the stage order does not change recipe sources or discard
+compatible caches. A cached Node.js sysroot is reused. If this stage reaches
+the shared deadline, CI saves its completed caches and continues in another
+run without starting the full image. It is skipped in board-preflight mode.
+It does not produce a flashable image, and cannot preserve unfinished compiler
+objects when interrupted; only completed sstate tasks can be reused.
+
+完整镜像阶段前，CI 先执行 `bitbake nodejs-native:do_populate_sysroot`，让 Web 界面
+依赖的耗时主机工具先完成到可生成 sstate 缓存的阶段，再开始内核编译。单个任务仍使用
+`PARALLEL_MAKE=-j4`；这里只改变顺序，不修改配方源码或丢弃兼容缓存，已有的 Node.js
+缓存可直接复用。若该阶段耗尽共享预算，则保存已完成的缓存并续编，不再启动完整镜像
+阶段；板级预检模式跳过此步骤。这个阶段本身不生成刷写镜像，也不能保留中断时尚未
+完成的编译对象，仍然只能复用已完成的 sstate 任务。
 
 The CI cache also retains the local hash-equivalence database alongside
 sstate. This preserves mappings used to reuse equivalent build outputs

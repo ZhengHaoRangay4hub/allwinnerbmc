@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Run inside the initialized BitBake environment. Both stages share one budget.
+# Run inside the initialized BitBake environment. All stages share one budget.
 set -Eeuo pipefail
 
-stage=${1:?usage: ci-build-stage.sh boot|image}
+stage=${1:?usage: ci-build-stage.sh boot|native-tools|image}
 : "${GITHUB_WORKSPACE:?}"
 : "${GITHUB_ENV:?}"
 : "${GITHUB_OUTPUT:?}"
@@ -14,6 +14,12 @@ case "$stage" in
     command=(bitbake u-boot-orangepi orangepi-boot-files
       orangepi-ms2130-capture:do_compile orangepi-gpio-control:do_install)
     log="$GITHUB_WORKSPACE/openbmc-boot.log"
+    ;;
+  native-tools)
+    # Finish the Web UI's expensive host tool through its sstate-producing
+    # task before it competes with kernel compilation on the four-core runner.
+    command=(bitbake nodejs-native:do_populate_sysroot)
+    log="$GITHUB_WORKSPACE/openbmc-native-tools.log"
     ;;
   image)
     # Keep unrelated tasks running through their sstate-producing steps after
@@ -74,7 +80,9 @@ if [[ $stage == boot ]]; then
   test -s "$deploy/u-boot-sunxi-with-spl.bin"
   test -s "$deploy/uboot.env"
   test -s "$deploy/orangepi-zero2-extlinux.conf"
-else
+elif [[ $stage == image ]]; then
   image=$(find "$deploy" -maxdepth 1 -type f -name '*.wic' -size +0c -print -quit)
   test -n "$image" || { echo '::error::BitBake completed without a TF-card image.'; exit 1; }
+else
+  echo 'Node.js native sysroot task completed; the full image is still required.'
 fi

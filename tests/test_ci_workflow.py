@@ -44,7 +44,8 @@ class WorkflowModesTest(unittest.TestCase):
         self.assertIn("default: false\n        type: boolean", WORKFLOW)
 
     def test_preflight_does_not_build_an_image_save_cache_or_dispatch_one(self):
-        for name in ("Build full OpenBMC image (checkpointable)",
+        for name in ("Build reusable Node.js tools (checkpointable)",
+                     "Build full OpenBMC image (checkpointable)",
                      "Save Yocto downloads and sstate after build attempt"):
             with self.subTest(step=name):
                 step = WORKFLOW.split("      - name: " + name + "\n", 1)[1]
@@ -57,6 +58,31 @@ class WorkflowModesTest(unittest.TestCase):
                 step = WORKFLOW.split("      - name: " + name + "\n", 1)[1]
                 step = step.split("\n      - name:", 1)[0]
                 self.assertIn("steps.build_image.outcome == 'success'", step)
+
+    def test_native_tools_finish_before_the_full_image_can_start(self):
+        native_name = "      - name: Build reusable Node.js tools (checkpointable)\n"
+        image_name = "      - name: Build full OpenBMC image (checkpointable)\n"
+        self.assertLess(WORKFLOW.index(native_name), WORKFLOW.index(image_name))
+        native = WORKFLOW.split(native_name, 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("steps.build_boot.outputs.checkpointed != 'true'", native)
+        self.assertIn('ci-build-stage.sh" native-tools', native)
+        image = WORKFLOW.split(image_name, 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("steps.build_native_tools.outcome == 'success'", image)
+        self.assertIn("steps.build_native_tools.outputs.checkpointed != 'true'", image)
+
+    def test_native_tools_checkpoint_requires_saved_cache_and_reaches_continuation(self):
+        outputs = WORKFLOW.split("    outputs:\n", 1)[1].split("    env:\n", 1)[0]
+        self.assertIn("steps.build_native_tools.outputs.checkpointed == 'true'", outputs)
+        guard = WORKFLOW.split("      - name: Require a saved cache before continuing a checkpoint\n", 1)[1]
+        guard = guard.split("\n      - name:", 1)[0]
+        self.assertIn("steps.build_native_tools.outputs.checkpointed == 'true'", guard)
+        self.assertIn("steps.save_cache.outcome != 'success'", guard)
+        self.assertIn("exit 1", guard)
+        self.assertIn("needs.build.outputs.cache_saved == 'true'", WORKFLOW)
+
+    def test_native_tools_diagnostics_are_uploaded(self):
+        diagnostics = WORKFLOW.split("      - name: Upload build diagnostics\n", 1)[1]
+        self.assertIn("openbmc-native-tools.log", diagnostics)
 
     def test_preflight_compiles_real_kernel_objects_and_rejects_timeout(self):
         self.assertIn("bitbake -c board_preflight virtual/kernel", WORKFLOW)
