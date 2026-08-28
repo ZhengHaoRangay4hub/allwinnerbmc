@@ -89,7 +89,7 @@ jobs:
             yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}
             yocto-orangepi-zero2-
 
-      - name: Fetch Linux and U-Boot from GitHub
+      - name: Fetch kernel configuration reference from GitHub
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -102,21 +102,12 @@ jobs:
           }
 
           clone_ref orangepi-xunlong/linux-orangepi orange-pi-6.1-sun50iw9 linux-orangepi
-          clone_ref orangepi-xunlong/u-boot-orangepi v2021.10-sunxi u-boot-orangepi
-
-          git -C u-boot-orangepi apply \
-            "$GITHUB_WORKSPACE/meta-orangepi/recipes-bsp/u-boot/files/0001-pylibfdt-use-setuptools-on-modern-python.patch" \
-            "$GITHUB_WORKSPACE/meta-orangepi/recipes-bsp/u-boot/files/0002-pylibfdt-use-portable-swig-appendoutput.patch" \
-            "$GITHUB_WORKSPACE/meta-orangepi/recipes-bsp/u-boot/files/0003-binman-use-standard-library-python-apis.patch"
-
           git -C linux-orangepi apply \
             "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/0001-uwe5622-fix-out-of-tree-include-paths.patch" \
             "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/0002-sun50i-cpufreq-nvmem-use-opp-token-type.patch"
 
           test "$(git -C linux-orangepi rev-parse HEAD)" = \
             "$(sed -n 's/^Linux commit: //p' sources/versions.txt)"
-          test "$(git -C u-boot-orangepi rev-parse HEAD)" = \
-            "$(sed -n 's/^U-Boot commit: //p' sources/versions.txt)"
 
       - name: Generate Linux defconfig for OpenBMC
         shell: bash
@@ -125,14 +116,15 @@ jobs:
           make -C linux-orangepi O="$GITHUB_WORKSPACE/linux-build" \
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- linux_sunxi64_defconfig
           linux-orangepi/scripts/config --file "$GITHUB_WORKSPACE/linux-build/.config" \
-            -e MFD_AC200
+            -e MFD_AC200 -e VFAT_FS -e NLS_CODEPAGE_437 \
+            -e NLS_ISO8859_1 -e NLS_UTF8
           make -C linux-orangepi O="$GITHUB_WORKSPACE/linux-build" \
             ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
           cp "$GITHUB_WORKSPACE/linux-build/.config" \
             "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/defconfig"
 
-      - name: Prepare OpenBMC board layer and local sources
+      - name: Prepare OpenBMC board layer and caches
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -181,10 +173,6 @@ jobs:
           HOSTTOOLS_NONFATAL:append = " chrpath rpcgen"
           HOSTTOOLS:remove = " chrpath rpcgen"
           BBPATH:prepend = "$GITHUB_WORKSPACE/openbmc/upstream-layers/openembedded-core/meta:"
-          EXTERNALSRC:pn-linux-orangepi = "$GITHUB_WORKSPACE/linux-orangepi"
-          EXTERNALSRC_BUILD:pn-linux-orangepi = "$GITHUB_WORKSPACE/linux-openbmc-build"
-          EXTERNALSRC:pn-u-boot-orangepi = "$GITHUB_WORKSPACE/u-boot-orangepi"
-          EXTERNALSRC_BUILD:pn-u-boot-orangepi = "$GITHUB_WORKSPACE/u-boot-openbmc-build"
           CONNECTIVITY_CHECK_URIS = ""
           EOF
 
@@ -259,7 +247,7 @@ jobs:
           (cd "$out" && sha256sum ./*.wic > SHA256SUMS && sha256sum -c SHA256SUMS)
           for image in "$out"/*.wic; do
             python3 "$GITHUB_WORKSPACE/scripts/verify-tf-image.py" "$image" \
-              > "function () { [native code] }.verification.json"
+              > "$image.verification.json"
           done
 
       - name: Upload TF-card image

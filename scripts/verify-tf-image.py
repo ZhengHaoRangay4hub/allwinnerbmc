@@ -16,6 +16,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import zlib
 
 
 class InvalidImage(Exception):
@@ -154,6 +155,19 @@ def check_aarch64(data, name):
     require(struct.unpack_from("<H", data, 18)[0] == 183, f"{name} is not AArch64")
 
 
+def check_environment(data):
+    require(len(data) == 0x20000, "Incorrect U-Boot environment size")
+    require(struct.unpack_from("<I", data)[0] == zlib.crc32(data[4:]),
+            "U-Boot environment CRC mismatch")
+    require(b"\0\0" in data[4:], "U-Boot environment is unterminated")
+    entries = data[4:].split(b"\0\0", 1)[0].split(b"\0")
+    variables = dict(entry.split(b"=", 1) for entry in entries if b"=" in entry)
+    require(variables.get(b"bootcmd"), "Default boot command is missing")
+    require(b"mmc0" in variables.get(b"boot_targets", b"").split(),
+            "Default environment does not scan the TF card")
+    return variables[b"bootcmd"].decode()
+
+
 def extract_region(stream, offset, size, output):
     """Copy only the chosen partition; sparse output avoids duplicating zeroes."""
     stream.seek(offset)
@@ -170,12 +184,12 @@ def extract_region(stream, offset, size, output):
         target.truncate(size)
 
 
-def check_rootfs(path):
+def check_rootfs(path, expected_bootcmd=None):
     command("e2fsck", "-f", "-n", path)
     # debugfs may exit zero for a missing file, so validate returned content.
     release = command("debugfs", "-R", "cat /usr/lib/os-release", path).decode()
     require(re.search(r"(?im)^ID=.*openbmc", release), "Root filesystem is not OpenBMC")
-    for binary in ("/usr/lib/systemd/systemd", "/usr/bin/bmcweb"):
+    for binary in ("/usr/lib/systemd/systemd", "/usr/bin/bmcweb", "/usr/bin/fw_printenv"):
         check_aarch64(command("debugfs", "-R", "cat " + binary, path), binary)
     init = command("debugfs", "-R", "stat /sbin/init", path).decode()
     require("Type: symlink" in init and "systemd/systemd" in init,
@@ -188,6 +202,18 @@ def check_rootfs(path):
         require(compressed, "OpenBMC Web UI is absent")
         webui = gzip.decompress(compressed)
     require(b"<html" in webui.lower(), "OpenBMC Web UI index is not HTML")
+    config = command("debugfs", "-R", "cat /etc/fw_env.config", path).decode()
+    entries = [line.split() for line in config.splitlines()
+               if line.strip() and not line.lstrip().startswith("#")]
+    require(len(entries) == 1 and entries[0] == ["/boot/uboot.env", "0x0", "0x20000"],
+            "fw_env.config does not describe the TF card's environment file")
+    env_text = command("debugfs", "-R", "cat /etc/u-boot-initial-env", path).decode()
+    variables = dict(line.split("=", 1) for line in env_text.splitlines() if "=" in line)
+    require(variables.get("bootcmd"), "Fallback U-Boot environment is absent")
+    if expected_bootcmd is not None:
+        require(variables["bootcmd"] == expected_bootcmd, "Fallback boot command differs from FAT environment")
+    setter = command("debugfs", "-R", "stat /usr/bin/fw_setenv", path).decode()
+    require("Type: symlink" in setter and "fw_printenv" in setter, "fw_setenv utility is absent")
     return release.strip()
 
 
@@ -206,7 +232,8 @@ def verify(image):
         payloads = check_fit(fit_path)
         for source, target in (("/Image", "Image"),
                                ("/sun50i-h616-orangepi-zero2.dtb", "board.dtb"),
-                               ("/extlinux/extlinux.conf", "extlinux.conf")):
+                               ("/extlinux/extlinux.conf", "extlinux.conf"),
+                               ("/uboot.env", "uboot.env")):
             command("mcopy", "-i", f"{image}@@{boot['offset']}", "::" + source, temp / target)
         with (temp / "Image").open("rb") as kernel:
             header = kernel.read(64)
@@ -215,12 +242,13 @@ def verify(image):
         require("xunlong,orangepi-zero2" in compatible and "allwinner,sun50i-h616" in compatible,
                 "Boot partition contains the wrong board's DTB")
         check_extlinux((temp / "extlinux.conf").read_text())
+        bootcmd = check_environment((temp / "uboot.env").read_bytes())
         superblock = read_at(stream, root["offset"] + 1024, 1024)
         require(superblock[56:58] == b"\x53\xef", "Root partition lacks an ext filesystem")
         require(superblock[120:136].rstrip(b"\0") == b"root", "Unexpected root volume label")
         root_path = temp / "root.ext4"
         extract_region(stream, root["offset"], root["size"], root_path)
-        release = check_rootfs(root_path)
+        release = check_rootfs(root_path, bootcmd)
     with image.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     return {"image": image.name, "size": image_size, "sha256": digest,

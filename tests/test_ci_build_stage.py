@@ -48,7 +48,7 @@ print(os.environ.get('TEST_LOG', 'simulated BitBake'))
 rc = int(os.environ.get('TEST_BUILD_RC', '0'))
 if rc == 0 and os.environ.get('TEST_OUTPUTS', '1') == '1':
     deploy = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'yocto-tmp/deploy/images/orangepi-zero2'
-    names = ['u-boot-sunxi-with-spl.bin', 'orangepi-zero2-extlinux.conf'] if '-c' in sys.argv else ['test.wic']
+    names = ['u-boot-sunxi-with-spl.bin', 'uboot.env', 'orangepi-zero2-extlinux.conf'] if 'u-boot-orangepi' in sys.argv else ['test.wic']
     for name in names:
         (deploy / name).write_bytes(b'test fixture only')
 sys.exit(rc)
@@ -73,7 +73,7 @@ sys.exit(rc)
         result = self.run_stage("boot")
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertEqual(json.loads(self.calls.read_text()),
-                         ["-c", "deploy", "u-boot-orangepi", "orangepi-boot-files"])
+                         ["u-boot-orangepi", "orangepi-boot-files"])
         self.assertEqual(self.checkpoint(), "checkpointed=false")
         self.assertIn("OPENBMC_BUILD_DEADLINE=", self.env_file.read_text())
 
@@ -95,7 +95,7 @@ sys.exit(rc)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("without a TF-card image", result.stdout)
 
-    def test_boot_success_requires_both_deployed_files(self):
+    def test_boot_success_requires_all_deployed_files(self):
         (self.deploy / "u-boot-sunxi-with-spl.bin").write_bytes(b"test fixture")
         result = self.run_stage("boot", TEST_OUTPUTS="0")
         self.assertNotEqual(result.returncode, 0)

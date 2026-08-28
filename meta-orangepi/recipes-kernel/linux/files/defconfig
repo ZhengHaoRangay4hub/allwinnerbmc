@@ -1,3 +1,3 @@
-# The complete H616/Orange Pi Zero 2 configuration is installed on the remote
-# build host from the standalone kernel build artifact before BitBake runs.
-# This file is replaced by that exact generated configuration during setup.
+# The GitHub workflow replaces this marker with linux_sunxi64_defconfig plus
+# the board's required MFD_AC200 setting before BitBake parses the layer.
+# linux-orangepi fails configuration if this marker was not replaced.

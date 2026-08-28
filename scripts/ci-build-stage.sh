@@ -9,7 +9,9 @@ stage=${1:?usage: ci-build-stage.sh boot|image}
 
 case "$stage" in
   boot)
-    command=(bitbake -c deploy u-boot-orangepi orangepi-boot-files)
+    # Include packaging/runtime dependencies so missing environment utilities
+    # fail before the long full-image build.
+    command=(bitbake u-boot-orangepi orangepi-boot-files)
     log="$GITHUB_WORKSPACE/openbmc-boot.log"
     ;;
   image)
@@ -69,6 +71,7 @@ fi
 deploy="$GITHUB_WORKSPACE/yocto-tmp/deploy/images/orangepi-zero2"
 if [[ $stage == boot ]]; then
   test -s "$deploy/u-boot-sunxi-with-spl.bin"
+  test -s "$deploy/uboot.env"
   test -s "$deploy/orangepi-zero2-extlinux.conf"
 else
   image=$(find "$deploy" -maxdepth 1 -type f -name '*.wic' -size +0c -print -quit)

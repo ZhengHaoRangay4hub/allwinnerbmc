@@ -2,12 +2,16 @@
 import importlib.util
 import io
 import gzip
+import json
 import os
 from pathlib import Path
 import shutil
 import struct
+import subprocess
 import tempfile
+import textwrap
 import unittest
+import zlib
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +43,12 @@ def boot_fixture():
     area[8192:8192 + len(spl)] = spl
     struct.pack_into(">II", area, 8192 + len(spl), 0xD00DFEED, 40)
     return area
+
+
+def environment_fixture():
+    payload = b"bootcmd=run distro_bootcmd\0boot_targets=mmc0 usb0\0\0"
+    payload = payload.ljust(0x20000 - 4, b"\xff")
+    return struct.pack("<I", zlib.crc32(payload)) + payload
 
 
 class ImageStructureTest(unittest.TestCase):
@@ -117,6 +127,14 @@ class ImageStructureTest(unittest.TestCase):
         with self.assertRaisesRegex(VERIFY.InvalidImage, "not AArch64"):
             VERIFY.check_aarch64(elf, "fixture")
 
+    def test_environment_crc_and_default_boot_command(self):
+        data = environment_fixture()
+        self.assertEqual(VERIFY.check_environment(data), "run distro_bootcmd")
+        corrupt = bytearray(data)
+        corrupt[-1] ^= 1
+        with self.assertRaisesRegex(VERIFY.InvalidImage, "CRC mismatch"):
+            VERIFY.check_environment(corrupt)
+
     def test_partition_extraction_is_exact_and_source_readonly(self):
         original = b"prefix" + bytes(1024 * 1024) + b"data" + b"suffix"
         source = io.BytesIO(original)
@@ -144,12 +162,12 @@ class ImageFilesystemTest(unittest.TestCase):
         cls.addClassCleanup(cls.temp.cleanup)
         cls.directory = Path(cls.temp.name)
         cls.rootdir = cls.directory / "roottree"
-        for subdir in ("usr/bin", "usr/sbin", "usr/lib/systemd/system", "usr/share/www"):
+        for subdir in ("etc", "usr/bin", "usr/sbin", "usr/lib/systemd/system", "usr/share/www"):
             (cls.rootdir / subdir).mkdir(parents=True, exist_ok=True)
         elf = bytearray(64)
         elf[:6] = b"\x7fELF\x02\x01"
         struct.pack_into("<H", elf, 18, 183)
-        for name in ("usr/lib/systemd/systemd", "usr/bin/bmcweb"):
+        for name in ("usr/lib/systemd/systemd", "usr/bin/bmcweb", "usr/bin/fw_printenv"):
             path = cls.rootdir / name
             path.write_bytes(elf)
             path.chmod(0o755)
@@ -161,6 +179,10 @@ class ImageFilesystemTest(unittest.TestCase):
             "<html><body>Non-bootable verification fixture</body></html>\n")
         (cls.rootdir / "sbin").symlink_to("usr/sbin")
         (cls.rootdir / "usr/sbin/init").symlink_to("../lib/systemd/systemd")
+        (cls.rootdir / "usr/bin/fw_setenv").symlink_to("fw_printenv")
+        (cls.rootdir / "etc/fw_env.config").write_text("/boot/uboot.env 0x0 0x20000\n")
+        (cls.rootdir / "etc/u-boot-initial-env").write_text(
+            "bootcmd=run distro_bootcmd\nboot_targets=mmc0 usb0\n")
         cls.rootfs = cls.directory / "root.ext4"
         cls.make_rootfs(cls.rootfs)
         dts = cls.directory / "board.dts"
@@ -173,6 +195,8 @@ class ImageFilesystemTest(unittest.TestCase):
         header = bytearray(64)
         header[56:60] = b"ARM\x64"
         kernel.write_bytes(header)
+        environment = cls.directory / "uboot.env"
+        environment.write_bytes(environment_fixture())
         cls.bootfs = cls.directory / "boot.fat"
         VERIFY.command("mformat", "-i", cls.bootfs, "-C", "-F", "-T", "131072", "::")
         VERIFY.command("mmd", "-i", cls.bootfs, "::/extlinux")
@@ -180,7 +204,8 @@ class ImageFilesystemTest(unittest.TestCase):
                          "orangepi-zero2-extlinux.conf")
         for source, target in ((kernel, "/Image"),
                                (cls.dtb, "/sun50i-h616-orangepi-zero2.dtb"),
-                               (config, "/extlinux/extlinux.conf")):
+                               (config, "/extlinux/extlinux.conf"),
+                               (environment, "/uboot.env")):
             VERIFY.command("mcopy", "-i", cls.bootfs, source, "::" + target)
         cls.image = cls.directory / "not-bootable-test-fixture.wic"
         area = boot_fixture()
@@ -241,6 +266,33 @@ class ImageFilesystemTest(unittest.TestCase):
         self.assertGreater(result["firmware"]["atf"]["size"], 1024)
         self.assertEqual(result["hardware_boot_test"], "not performed")
         self.assertEqual(self.image.stat().st_mtime_ns, before)
+
+    def test_workflow_collects_image_checksum_and_report_together(self):
+        if not shutil.which("sha256sum"):
+            self.skipTest("sha256sum is required to exercise the CI collection step")
+        workflow = (ROOT / ".github/workflows/build-orangepi-zero2-image.yml").read_text()
+        step = workflow.split("      - name: Collect TF-card image and checksums\n", 1)[1]
+        step = step.split("\n      - name:", 1)[0]
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        with tempfile.TemporaryDirectory(prefix="opizero-collect-test-") as directory:
+            workspace = Path(directory)
+            (workspace / "scripts").symlink_to(ROOT / "scripts", target_is_directory=True)
+            deploy = workspace / "yocto-tmp/deploy/images/orangepi-zero2"
+            deploy.mkdir(parents=True)
+            shutil.copy2(self.image, deploy / self.image.name)
+            result = subprocess.run(
+                ["bash", "-c", script], cwd=workspace,
+                env={**os.environ, "GITHUB_WORKSPACE": str(workspace)},
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout)
+            output = workspace / "tf-card-image"
+            report_name = self.image.name + ".verification.json"
+            self.assertEqual({path.name for path in output.iterdir()},
+                             {self.image.name, "SHA256SUMS", report_name})
+            report = json.loads((output / report_name).read_text())
+            self.assertIn(report["sha256"], (output / "SHA256SUMS").read_text())
+            self.assertEqual(report["hardware_boot_test"], "not performed")
 
     def test_empty_bl31_is_not_accepted_as_a_bootable_fit(self):
         path = self.make_fit("missing-bl31", bl31=False)

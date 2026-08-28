@@ -43,12 +43,13 @@ The workflow is defined in
 prepares the board Linux configuration, verifies the OpenBMC boot components,
 then lets BitBake build the complete
 OpenBMC image (including the boot components required inside that image) and
-uploads one directly flashable `.wic` TF-card image plus `SHA256SUMS`.
+uploads one directly flashable `.wic` TF-card image, `SHA256SUMS`, and a
+read-only image validation report.
 
 工作流位于
 [`build-orangepi-zero2-image.yml`](.github/workflows/build-orangepi-zero2-image.yml)。它先准备板级
 Linux 配置并检查 OpenBMC 启动组件，再由 BitBake 编译完整 OpenBMC（镜像内部仍包含启动所必需的启动组件），
-最后上传一个可直接烧录的 `.wic` TF 卡镜像及 `SHA256SUMS`。
+最后上传一个可直接烧录的 `.wic` TF 卡镜像、`SHA256SUMS` 和镜像校验报告。
 
 The boot check and full-image stages share a 300-minute budget inside a
 360-minute job, leaving time to save caches and logs. A controlled timeout
@@ -64,6 +65,16 @@ so unrelated recipes can finish producing reusable sstate after another fails.
 未完成的编译任务不能在指令级断点续跑。完整镜像使用 `bitbake -k`，让不受错误影响的
 配方继续完成缓存生成。
 
+The kernel and U-Boot use pinned Git recipes with shallow downloads and
+normal sstate support. The earlier `externalsrc` mode explicitly disabled
+sstate creation for these recipes. Its old build directories cannot be
+recovered from sstate: the first standard-recipe build creates that cache;
+other completed, compatible recipe caches can still be reused.
+
+内核与 U-Boot 使用固定 Git 提交、浅下载和正常 sstate 缓存。此前的 `externalsrc`
+模式明确禁用了这两个配方的 sstate 生成，旧构建目录不能从缓存恢复；切换后的
+第一次构建才会生成可复用缓存。其他已完成且兼容的配方缓存仍可沿用。
+
 BL31 is built for `sun50i_h616` as an internal dependency and included in the
 combined SPL/U-Boot payload at the TF card's 8 KiB offset. The boot partition
 contains Image, the Zero 2 device tree, and extlinux.conf. The second partition
@@ -74,6 +85,15 @@ BL31 使用 `sun50i_h616` 平台编译，作为内部依赖放入 TF 卡 8 KiB �
 组合启动程序。启动分区包含 Image、Zero 2 设备树和 extlinux.conf；第二分区是 ext4
 OpenBMC 根文件系统，`/dev/mmcblk0p2` 根分区参数无需 initramfs 解析。
 工作流不再单独上传 Linux/U-Boot 交付物。
+
+The boot partition also contains a CRC-protected `uboot.env`, generated from
+the compiled bootloader's defaults. Userspace uses actual `libubootenv`
+utilities and `/etc/fw_env.config` to access `/boot/uboot.env`, without
+writing raw card offsets. Services that need it require the boot mount.
+
+启动分区另含从当前 U-Boot 默认配置生成、带 CRC 校验的 `uboot.env`。
+用户态使用真正的 `libubootenv` 工具，并通过 `/etc/fw_env.config` 访问
+`/boot/uboot.env`，不写裸卡偏移；相关服务要求先挂载启动分区。
 
 Before uploading, the workflow checks the MBR partition layout, the SPL at
 8 KiB and its checksum, the embedded U-Boot/BL31 FIT payloads, the boot files,
@@ -129,8 +149,8 @@ GitHub token 放入本仓库。
 `artifacts/orangepi-zero2-linux/` contains the verified standalone H616 Linux
 build output (`Image`, DTB, `System.map`, and kernel config). The full
 OpenBMC image remains a build target; it is not claimed as complete until a
-successful BitBake image and its checksum are present.
+successful BitBake image, matching checksum, and passing content checks are present.
 
 `artifacts/orangepi-zero2-linux/` 包含已经校验的 H616 独立 Linux 编译产物
 （`Image`、DTB、`System.map` 和内核配置）。完整 OpenBMC 镜像仍需通过 BitBake
-成功构建并生成校验和后，才能宣布完成。
+成功构建、核对校验和并通过镜像内容检查后，才能宣布完成。

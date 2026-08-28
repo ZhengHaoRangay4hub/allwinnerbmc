@@ -1,3 +1,10 @@
+Subject: [PATCH] pylibfdt: support modern Python packaging
+
+Use setuptools on current Python and remove the U-Boot tag prefix from
+the Python extension version so packaging accepts it as a PEP 440 version.
+
+Upstream-Status: Inappropriate [compatibility with the pinned vendor U-Boot]
+
 diff --git a/scripts/dtc/pylibfdt/setup.py b/scripts/dtc/pylibfdt/setup.py
 index 992cdec3..0264c91c 100755
 --- a/scripts/dtc/pylibfdt/setup.py
