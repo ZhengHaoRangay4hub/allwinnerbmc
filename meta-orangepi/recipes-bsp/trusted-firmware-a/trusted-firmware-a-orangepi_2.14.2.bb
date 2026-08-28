@@ -5,9 +5,10 @@ LICENSE = "BSD-2-Clause & BSD-3-Clause & MIT & Apache-2.0"
 LIC_FILES_CHKSUM = "file://docs/license.rst;md5=6ed7bace7b0bc63021c6eba7b524039e"
 
 # The upstream GitHub mirror exposes lts-v2.14.2 as a tag, not an LTS branch.
-SRC_URI = "git://github.com/ARM-software/arm-trusted-firmware.git;protocol=https;nobranch=1;destsuffix=git"
+SRC_URI = "git://github.com/ARM-software/arm-trusted-firmware.git;protocol=https;nobranch=1"
 SRCREV = "aa1793fff49a1b5a6a877c278a0df0a188e2b1f2"
-S = "${UNPACKDIR}/git"
+# OE-Core sets both S and the Git checkout suffix from BP. Do not restore
+# the legacy /git override: current do_qa_unpack rejects it explicitly.
 B = "${WORKDIR}/build"
 
 COMPATIBLE_MACHINE = "orangepi-zero2"
