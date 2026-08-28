@@ -25,7 +25,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     outputs:
-      checkpointed: ${{ steps.build_image.outputs.checkpointed }}
+      checkpointed: ${{ steps.build_boot.outputs.checkpointed == 'true' || steps.build_image.outputs.checkpointed == 'true' }}
+      cache_saved: ${{ steps.save_cache.outcome == 'success' }}
     env:
       DEBIAN_FRONTEND: noninteractive
       # The standard hosted runner has four vCPUs.  Avoiding a 24-worker
@@ -41,6 +42,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Test checkpoint and failure handling
+        run: python3 -m unittest discover -s tests -v
 
       - name: Reclaim runner disk space
         shell: bash
@@ -69,7 +73,7 @@ jobs:
           echo "LC_ALL=en_US.UTF-8" >> "$GITHUB_ENV"
 
       - name: Cache Yocto downloads and sstate
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             yocto-downloads
@@ -96,7 +100,9 @@ jobs:
           clone_ref orangepi-xunlong/u-boot-orangepi v2021.10-sunxi u-boot-orangepi
 
           git -C u-boot-orangepi apply \
-            "$GITHUB_WORKSPACE/meta-orangepi/recipes-bsp/u-boot/files/0001-pylibfdt-use-setuptools-on-modern-python.patch"
+            "$GITHUB_WORKSPACE/meta-orangepi/recipes-bsp/u-boot/files/0001-pylibfdt-use-setuptools-on-modern-python.patch" \
+            "$GITHUB_WORKSPACE/meta-orangepi/recipes-bsp/u-boot/files/0002-pylibfdt-use-portable-swig-appendoutput.patch" \
+            "$GITHUB_WORKSPACE/meta-orangepi/recipes-bsp/u-boot/files/0003-binman-use-standard-library-python-apis.patch"
 
           git -C linux-orangepi apply \
             "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/0001-uwe5622-fix-out-of-tree-include-paths.patch" \
@@ -162,6 +168,7 @@ jobs:
           # the domestic proxy from the shared-cluster local.conf template
           # into this workflow.
           PREMIRRORS = ""
+          PREMIRRORS:prepend = ""
           MIRRORS = ""
           # The vendored OpenBMC tree has no separate .git directory. Use
           # the checked-out repository for OpenBMC version metadata.
@@ -183,8 +190,8 @@ jobs:
             rm -f "$zlib_tar"
           fi
 
-      - name: Build full OpenBMC image (checkpointable)
-        id: build_image
+      - name: Validate OpenBMC boot components (checkpointable)
+        id: build_boot
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -192,32 +199,24 @@ jobs:
           set +u
           . ./oe-init-build-env "$GITHUB_WORKSPACE/openbmc-build"
           set -u
-          # Allow long native tasks to finish while leaving time for the
-          # always-run cache-save step before the GitHub job limit.
-          set +e
-          timeout --signal=TERM --kill-after=5m 300m \
-            bitbake obmc-phosphor-image 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-bitbake.log"
-          bitbake_rc=${PIPESTATUS[0]}
-          set -e
+          bash "$GITHUB_WORKSPACE/scripts/ci-build-stage.sh" boot
 
-          deploy="$GITHUB_WORKSPACE/openbmc-build/tmp/deploy/images/orangepi-zero2"
-          if find "$deploy" -maxdepth 1 -type f -name '*.wic' -print -quit 2>/dev/null | grep -q .; then
-            echo 'checkpointed=false' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "$bitbake_rc" -eq 124 ] || [ "$bitbake_rc" -eq 137 ] || [ "$bitbake_rc" -eq 143 ]; then
-            echo "Checkpoint $CHECKPOINT_NUMBER reached; completed sstate will be saved."
-            echo 'checkpointed=true' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo 'checkpointed=false' >> "$GITHUB_OUTPUT"
-          exit "$bitbake_rc"
+      - name: Build full OpenBMC image (checkpointable)
+        id: build_image
+        if: success() && steps.build_boot.outputs.checkpointed != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$GITHUB_WORKSPACE/openbmc"
+          set +u
+          . ./oe-init-build-env "$GITHUB_WORKSPACE/openbmc-build"
+          set -u
+          bash "$GITHUB_WORKSPACE/scripts/ci-build-stage.sh" image
 
       # Preserve completed Yocto work even when BitBake fails.  The next run
       # restores this cache and reuses sstate instead of rebuilding everything.
       - name: Save Yocto downloads and sstate after build attempt
+        id: save_cache
         if: always()
         continue-on-error: true
         uses: actions/cache/save@v4
@@ -227,26 +226,37 @@ jobs:
             yocto-sstate
           key: yocto-orangepi-zero2-${{ hashFiles('sources/versions.txt', 'meta-orangepi/**') }}-${{ github.run_id }}
 
+      - name: Require a saved cache before continuing a checkpoint
+        if: >-
+          always() &&
+          (steps.build_boot.outputs.checkpointed == 'true' || steps.build_image.outputs.checkpointed == 'true') &&
+          steps.save_cache.outcome != 'success'
+        run: |
+          echo '::error::The build reached its checkpoint but the cache could not be saved.'
+          exit 1
+
       - name: Collect TF-card image and checksums
         if: >-
           success() &&
+          steps.build_image.outcome == 'success' &&
           steps.build_image.outputs.checkpointed != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
-          deploy="$GITHUB_WORKSPACE/openbmc-build/tmp/deploy/images/orangepi-zero2"
+          deploy="$GITHUB_WORKSPACE/yocto-tmp/deploy/images/orangepi-zero2"
           out="$GITHUB_WORKSPACE/tf-card-image"
           test -d "$deploy"
           mkdir -p "$out"
           # The deliverable is the complete, directly flashable SD image.
           find "$deploy" -maxdepth 1 -type f -name '*.wic' \
             -exec cp -a {} "$out/" \;
-          sha256sum "$out"/* | sort > "$out/SHA256SUMS"
           test -n "$(find "$out" -type f -name '*.wic' -print -quit)"
+          (cd "$out" && sha256sum ./*.wic > SHA256SUMS && sha256sum -c SHA256SUMS)
 
       - name: Upload TF-card image
         if: >-
           success() &&
+          steps.build_image.outcome == 'success' &&
           steps.build_image.outputs.checkpointed != 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -261,10 +271,11 @@ jobs:
         with:
           name: orangepi-zero2-build-diagnostics-${{ github.run_number }}
           path: |
+            openbmc-boot.log
             openbmc-bitbake.log
             openbmc-build/conf/*.conf
-            openbmc-build/tmp/log/cooker/**
-            openbmc-build/tmp/work/**/temp/log.do_*
+            yocto-tmp/log/cooker/**
+            yocto-tmp/work/**/temp/log.do_*
           if-no-files-found: warn
           retention-days: 7
 
@@ -274,6 +285,7 @@ jobs:
     if: >-
       needs.build.result == 'success' &&
       needs.build.outputs.checkpointed == 'true' &&
+      needs.build.outputs.cache_saved == 'true' &&
       fromJSON(inputs.checkpoint || '0') < 5
     runs-on: ubuntu-24.04
     steps:

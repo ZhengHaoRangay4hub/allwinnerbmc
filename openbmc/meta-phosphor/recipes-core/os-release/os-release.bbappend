@@ -21,7 +21,7 @@ def run_git(d, cmd):
 # a strong variable in the vardeps chain for do_compile so that we get the
 # contents of the 'git describe --dirty' call.  Create a strong/immediate
 # indirection via PHOSPHOR_OS_RELEASE_DISTRO_VERSION.
-PHOSPHOR_OS_RELEASE_DISTRO_VERSION := "${@run_git(d, 'describe --dirty')}"
+PHOSPHOR_OS_RELEASE_DISTRO_VERSION := "${@run_git(d, 'describe --always --dirty')}"
 DISTRO_VERSION ??= "${PHOSPHOR_OS_RELEASE_DISTRO_VERSION}"
 EXTENDED_VERSION ??= "${PHOSPHOR_OS_RELEASE_DISTRO_VERSION}"
 VERSION = "${@'-'.join(d.getVar('VERSION_ID').split('-')[0:2])}"

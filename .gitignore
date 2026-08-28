@@ -10,6 +10,8 @@ deploy/
 *.so
 *.tmp
 *.swp
+__pycache__/
+*.py[cod]
 
 # Local/private material
 *.pem
@@ -19,7 +21,6 @@ id_rsa*
 ._*
 
 # Large source/build trees are intentionally kept outside this repository.
-kernel/
-u-boot/
-toolchains/
-
+/kernel/
+/u-boot/
+/toolchains/

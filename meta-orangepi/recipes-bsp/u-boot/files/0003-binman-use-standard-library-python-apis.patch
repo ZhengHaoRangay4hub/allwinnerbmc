@@ -1,0 +1,67 @@
+Subject: [PATCH] binman: replace removed Python packaging APIs
+
+Python 3.12 removed distutils; current setuptools lacks pkg_resources.
+Use sysconfig and importlib.resources when running binman from the source
+tree, including the native Python used by OpenBMC.
+
+Upstream-Status: Inappropriate [compatibility for the pinned vendor tree]
+
+diff --git a/tools/binman/control.py b/tools/binman/control.py
+index dcba02ff..6aa59ff3 100644
+--- a/tools/binman/control.py
++++ b/tools/binman/control.py
+@@ -6,9 +6,9 @@
+ #
+ 
+ from collections import OrderedDict
++from importlib import resources
+ import glob
+ import os
+-import pkg_resources
+ import re
+ 
+ import sys
+@@ -81,7 +81,7 @@ def _ReadMissingBlobHelp():
+             msg = ''
+         return tag, msg
+ 
+-    my_data = pkg_resources.resource_string(__name__, 'missing-blob-help')
++    my_data = resources.files('binman').joinpath('missing-blob-help').read_bytes()
+     re_tag = re.compile('^([-a-z0-9]+):$')
+     result = {}
+     tag = None
+@@ -128,7 +128,8 @@ def GetEntryModules(include_testing=True):
+     Returns:
+         Set of paths to entry class filenames
+     """
+-    glob_list = pkg_resources.resource_listdir(__name__, 'etype')
++    glob_list = [entry.name for entry in
++                 resources.files('binman').joinpath('etype').iterdir()]
+     glob_list = [fname for fname in glob_list if fname.endswith('.py')]
+     return set([os.path.splitext(os.path.basename(item))[0]
+                 for item in glob_list
+diff --git a/tools/binman/main.py b/tools/binman/main.py
+index 8c1e478d..6c5543ed 100755
+--- a/tools/binman/main.py
++++ b/tools/binman/main.py
+@@ -9,10 +9,10 @@
+ 
+ """See README for more information"""
+ 
+-from distutils.sysconfig import get_python_lib
+ import os
+ import site
+ import sys
++import sysconfig
+ import traceback
+ import unittest
+ 
+@@ -33,7 +33,7 @@ sys.path.insert(2, os.path.join(our_path,
+ # directories are dropped from the python path. Add them in so that we can find
+ # the elffile module. We could use site.getsitepackages() here but unfortunately
+ # that is not available in a virtualenv.
+-sys.path.append(get_python_lib())
++sys.path.append(sysconfig.get_path('purelib'))
+ 
+ from binman import cmdline
+ from binman import control

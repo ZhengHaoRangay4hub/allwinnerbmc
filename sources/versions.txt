@@ -10,5 +10,10 @@ U-Boot source URL: https://github.com/orangepi-xunlong/u-boot-orangepi.git
 U-Boot branch: v2021.10-sunxi
 U-Boot commit: 0b91e222a025640182ea986f3c8e8db98cdc962a
 
-Target: Orange Pi Zero 2, Allwinner H616, 1 GB / 512 MB variants
+Trusted Firmware-A URL: https://github.com/ARM-software/arm-trusted-firmware.git
+Trusted Firmware-A version: 2.14.2
+Trusted Firmware-A tag: lts-v2.14.2
+Trusted Firmware-A commit: aa1793fff49a1b5a6a877c278a0df0a188e2b1f2
+Trusted Firmware-A platform: sun50i_h616
 
+Target: Orange Pi Zero 2, Allwinner H616, 1 GB / 512 MB variants

@@ -31,35 +31,72 @@ GitHub Actions 构建输入。上游 OpenBMC 源码位于 `openbmc/`，板级定
 ## Source revisions / 源码版本
 
 See [`sources/versions.txt`](sources/versions.txt) for the exact upstream
-repositories and commits used for the Linux, U-Boot, and OpenBMC trees.
+repositories and commits used for Linux, U-Boot, Trusted Firmware-A, and OpenBMC.
 
-具体的 Linux、U-Boot 和 OpenBMC 上游仓库及提交版本见
+具体的 Linux、U-Boot、Trusted Firmware-A 和 OpenBMC 上游仓库及提交版本见
 [`sources/versions.txt`](sources/versions.txt)。
 
 ## GitHub Actions build / GitHub Actions 构建
 
 The workflow is defined in
-[`build-orangepi-zero2.yml`](.github/workflows/build-orangepi-zero2.yml). It
-prepares the board Linux configuration, then lets BitBake build the complete
+[`build-orangepi-zero2-image.yml`](.github/workflows/build-orangepi-zero2-image.yml). It
+prepares the board Linux configuration, verifies the OpenBMC boot components,
+then lets BitBake build the complete
 OpenBMC image (including the boot components required inside that image) and
 uploads one directly flashable `.wic` TF-card image plus `SHA256SUMS`.
 
 工作流位于
-[`build-orangepi-zero2.yml`](.github/workflows/build-orangepi-zero2.yml)。它先准备板级
-Linux 配置，然后由 BitBake 编译完整 OpenBMC（镜像内部仍包含启动所必需的启动组件），
+[`build-orangepi-zero2-image.yml`](.github/workflows/build-orangepi-zero2-image.yml)。它先准备板级
+Linux 配置并检查 OpenBMC 启动组件，再由 BitBake 编译完整 OpenBMC（镜像内部仍包含启动所必需的启动组件），
 最后上传一个可直接烧录的 `.wic` TF 卡镜像及 `SHA256SUMS`。
+
+The boot check and full-image stages share a 300-minute budget inside a
+360-minute job, leaving time to save caches and logs. A controlled timeout
+can dispatch up to five continuation runs if the cache was saved. Actual
+recipe errors and early SIGTERM/SIGKILL exits remain failures. Downloads and
+completed sstate tasks are reusable; an unfinished compiler task does not
+resume at an instruction-level breakpoint. The full image uses `bitbake -k`
+so unrelated recipes can finish producing reusable sstate after another fails.
+
+启动检查与完整镜像编译共享 300 分钟预算，Job 上限为 360 分钟，余下时间用于
+保存缓存和日志。正常预算到期且缓存保存成功时，最多自动续编五轮；真实配方错误
+及提前发生的 SIGTERM/SIGKILL 仍判为失败。可复用下载文件和已完成的 sstate 任务，
+未完成的编译任务不能在指令级断点续跑。完整镜像使用 `bitbake -k`，让不受错误影响的
+配方继续完成缓存生成。
+
+BL31 is built for `sun50i_h616` as an internal dependency and included in the
+combined SPL/U-Boot payload at the TF card's 8 KiB offset. The boot partition
+contains Image, the Zero 2 device tree, and extlinux.conf. The second partition
+is the ext4 OpenBMC root filesystem; no initramfs is needed to resolve its
+`/dev/mmcblk0p2` root argument. Separate Linux/U-Boot deliverables are not uploaded.
+
+BL31 使用 `sun50i_h616` 平台编译，作为内部依赖放入 TF 卡 8 KiB 偏移处的 SPL/U-Boot
+组合启动程序。启动分区包含 Image、Zero 2 设备树和 extlinux.conf；第二分区是 ext4
+OpenBMC 根文件系统，`/dev/mmcblk0p2` 根分区参数无需 initramfs 解析。
+工作流不再单独上传 Linux/U-Boot 交付物。
 
 ## Local build / 本地构建
 
-On a supported x86_64 Linux build host, enter `openbmc/` and run the following
-commands. 在支持的 x86_64 Linux 编译机上进入 `openbmc/`，执行：
+Use a supported x86_64 Linux build host. First follow the workflow's source
+checkout, patch, and defconfig generation steps, then copy the board layer
+into `openbmc/`. 在支持的 x86_64 Linux 编译机上，先按工作流准备源码、应用补丁并
+生成 defconfig，再复制板级层并初始化：
 
 ```sh
-MACHINE=orangepi-zero2 DISTRO_FEATURES:append=" systemd" \
-    TEMPLATECONF=meta-orangepi/conf/templates/default \
+cp -a meta-orangepi openbmc/meta-orangepi
+cd openbmc
+TEMPLATECONF=meta-orangepi/conf/templates/default \
     . ./setup orangepi-zero2 build-orangepi-zero2
-bitbake obmc-phosphor-image
 ```
+
+Before running `bitbake obmc-phosphor-image`, replace the historical cluster
+paths in `conf/local.conf` with your source, build, download, and sstate paths.
+For direct Internet access clear both `PREMIRRORS` and `PREMIRRORS:prepend`.
+GitHub Actions already overrides these values and uses upstream sources directly.
+
+执行 `bitbake obmc-phosphor-image` 前，需要把 `conf/local.conf` 中历史集群的源码、
+构建及缓存路径改为本机路径。使用直连网络时同时清空 `PREMIRRORS` 与
+`PREMIRRORS:prepend`。GitHub Actions 已覆盖这些配置，直接使用上游源。
 
 The helper scripts in `scripts/` document the dependency bootstrap used on
 the shared cluster. Do not place SSH keys or GitHub tokens in this repository.
