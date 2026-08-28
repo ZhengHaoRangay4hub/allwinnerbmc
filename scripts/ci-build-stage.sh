@@ -25,7 +25,7 @@ case "$stage" in
 esac
 
 if [[ -z ${OPENBMC_BUILD_DEADLINE:-} ]]; then
-  budget=${OPENBMC_BUILD_BUDGET_SECONDS:-18000}
+  budget=${OPENBMC_BUILD_BUDGET_SECONDS:-19800}
   [[ $budget =~ ^[1-9][0-9]*$ ]] || { echo '::error::Invalid build budget'; exit 2; }
   OPENBMC_BUILD_DEADLINE=$(( $(date +%s) + budget ))
   echo "OPENBMC_BUILD_DEADLINE=$OPENBMC_BUILD_DEADLINE" >> "$GITHUB_ENV"

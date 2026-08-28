@@ -9,6 +9,25 @@ WORKFLOW = (Path(__file__).resolve().parents[1] /
 
 
 class WorkflowModesTest(unittest.TestCase):
+    def test_build_budget_leaves_time_outside_the_compiler(self):
+        budget = re.search(
+            r"OPENBMC_BUILD_BUDGET_SECONDS: .*&& '([0-9]+)' \|\| '([0-9]+)'",
+            WORKFLOW,
+        )
+        timeout = re.search(
+            r"timeout-minutes: .*&& ([0-9]+) \|\| ([0-9]+)", WORKFLOW,
+        )
+        self.assertIsNotNone(budget)
+        self.assertIsNotNone(timeout)
+        preflight_seconds, image_seconds = map(int, budget.groups())
+        preflight_minutes, image_minutes = map(int, timeout.groups())
+        self.assertLessEqual(image_minutes, 360)
+        self.assertGreaterEqual(image_minutes * 60 - image_seconds, 30 * 60)
+        self.assertGreaterEqual(preflight_minutes * 60 - preflight_seconds, 30 * 60)
+        script = (Path(__file__).resolve().parents[1] / "scripts/ci-build-stage.sh").read_text()
+        default = int(re.search(r"OPENBMC_BUILD_BUDGET_SECONDS:-([0-9]+)", script)[1])
+        self.assertEqual(default, image_seconds)
+
     def test_hash_equivalence_database_is_in_the_persisted_sstate_directory(self):
         values = {}
         for name in ("SSTATE_DIR", "BB_HASHSERVE_DB_DIR"):

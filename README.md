@@ -51,16 +51,18 @@ read-only image validation report.
 Linux 配置并检查 OpenBMC 启动组件，再由 BitBake 编译完整 OpenBMC（镜像内部仍包含启动所必需的启动组件），
 最后上传一个可直接烧录的 `.wic` TF 卡镜像、`SHA256SUMS` 和镜像校验报告。
 
-The boot check and full-image stages share a 300-minute budget inside a
-360-minute job, leaving time to save caches and logs. A controlled timeout
+The boot check and full-image stages share a 330-minute budget inside a
+360-minute job. The remaining 30 minutes cover setup, graceful termination,
+cache/log saving, and artifact validation/upload. A controlled timeout
 can dispatch up to five continuation runs if the cache was saved. Actual
 recipe errors and early SIGTERM/SIGKILL exits remain failures. Downloads and
 completed sstate tasks are reusable; an unfinished compiler task does not
 resume at an instruction-level breakpoint. The full image uses `bitbake -k`
 so unrelated recipes can finish producing reusable sstate after another fails.
 
-启动检查与完整镜像编译共享 300 分钟预算，Job 上限为 360 分钟，余下时间用于
-保存缓存和日志。正常预算到期且缓存保存成功时，最多自动续编五轮；真实配方错误
+启动检查与完整镜像编译共享 330 分钟预算，Job 上限为 360 分钟；其余 30 分钟用于
+环境准备、正常终止、保存缓存与日志，以及镜像校验和上传。正常预算到期且缓存
+保存成功时，最多自动续编五轮；真实配方错误
 及提前发生的 SIGTERM/SIGKILL 仍判为失败。可复用下载文件和已完成的 sstate 任务，
 未完成的编译任务不能在指令级断点续跑。完整镜像使用 `bitbake -k`，让不受错误影响的
 配方继续完成缓存生成。

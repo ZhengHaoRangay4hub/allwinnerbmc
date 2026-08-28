@@ -42,7 +42,9 @@ jobs:
       BB_NUMBER_PARSE_THREADS: "4"
       PARALLEL_MAKE: "-j4"
       CHECKPOINT_NUMBER: ${{ inputs.checkpoint || '0' }}
-      OPENBMC_BUILD_BUDGET_SECONDS: ${{ inputs.preflight_only && '1200' || '18000' }}
+      # Keep 30 minutes of the six-hour job outside the shared build budget
+      # for setup, graceful termination, cache saving and artifact validation.
+      OPENBMC_BUILD_BUDGET_SECONDS: ${{ inputs.preflight_only && '1200' || '19800' }}
 
     steps:
       - name: Check out port sources
