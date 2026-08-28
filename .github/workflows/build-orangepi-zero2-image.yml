@@ -1,8 +1,14 @@
 name: Orange Pi Zero 2 OpenBMC
+run-name: "${{ inputs.preflight_only && 'OpenBMC board preflight' || 'OpenBMC TF-card image' }} #${{ github.run_number }}"
 
 on:
   workflow_dispatch:
     inputs:
+      preflight_only:
+        description: 'Validate board recipes only; does not produce a flashable image'
+        required: false
+        default: false
+        type: boolean
       checkpoint:
         description: 'Internal checkpoint number for resumable builds'
         required: false
@@ -14,16 +20,16 @@ permissions:
   actions: write
 
 concurrency:
-  # This workflow is deliberately manual-only.  A single stable group keeps
-  # an accidental duplicate dispatch from consuming another hosted runner.
-  group: orangepi-zero2-openbmc
+  # A preflight must never cancel an in-progress full image build.
+  # Preserve the existing full-build group across workflow revisions.
+  group: ${{ inputs.preflight_only && 'orangepi-zero2-preflight' || 'orangepi-zero2-openbmc' }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: OpenBMC TF-card image
+    name: ${{ inputs.preflight_only && 'OpenBMC board preflight (no image)' || 'OpenBMC TF-card image' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: ${{ inputs.preflight_only && 60 || 360 }}
     outputs:
       checkpointed: ${{ steps.build_boot.outputs.checkpointed == 'true' || steps.build_image.outputs.checkpointed == 'true' }}
       cache_saved: ${{ steps.save_cache.outcome == 'success' }}
@@ -36,6 +42,7 @@ jobs:
       BB_NUMBER_PARSE_THREADS: "4"
       PARALLEL_MAKE: "-j4"
       CHECKPOINT_NUMBER: ${{ inputs.checkpoint || '0' }}
+      OPENBMC_BUILD_BUDGET_SECONDS: ${{ inputs.preflight_only && '1200' || '18000' }}
 
     steps:
       - name: Check out port sources
@@ -194,9 +201,29 @@ jobs:
           set -u
           bash "$GITHUB_WORKSPACE/scripts/ci-build-stage.sh" boot
 
+      - name: Require completed boot preflight
+        if: inputs.preflight_only && steps.build_boot.outputs.checkpointed == 'true'
+        run: |
+          echo '::error::Board preflight exceeded its time budget; it is not a successful validation.'
+          exit 1
+
+      - name: Validate fetched kernel configuration (preflight only)
+        if: inputs.preflight_only && success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$GITHUB_WORKSPACE/openbmc"
+          set +u
+          . ./oe-init-build-env "$GITHUB_WORKSPACE/openbmc-build"
+          set -u
+          timeout --signal=TERM --kill-after=2m 20m \
+            bitbake -c configure virtual/kernel 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-kernel-config.log"
+          echo 'Board recipes passed preflight. This run does not produce a flashable image.' \
+            >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build full OpenBMC image (checkpointable)
         id: build_image
-        if: success() && steps.build_boot.outputs.checkpointed != 'true'
+        if: "!inputs.preflight_only && success() && steps.build_boot.outputs.checkpointed != 'true'"
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -210,7 +237,8 @@ jobs:
       # restores this cache and reuses sstate instead of rebuilding everything.
       - name: Save Yocto downloads and sstate after build attempt
         id: save_cache
-        if: always()
+        # Preflights only read caches; they must not replace a fuller image cache.
+        if: always() && !inputs.preflight_only
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
@@ -222,6 +250,7 @@ jobs:
       - name: Require a saved cache before continuing a checkpoint
         if: >-
           always() &&
+          !inputs.preflight_only &&
           (steps.build_boot.outputs.checkpointed == 'true' || steps.build_image.outputs.checkpointed == 'true') &&
           steps.save_cache.outcome != 'success'
         run: |
@@ -269,6 +298,7 @@ jobs:
           name: orangepi-zero2-build-diagnostics-${{ github.run_number }}
           path: |
             openbmc-boot.log
+            openbmc-kernel-config.log
             openbmc-bitbake.log
             openbmc-build/conf/*.conf
             yocto-tmp/log/cooker/**
@@ -280,6 +310,7 @@ jobs:
     name: Continue checkpointed Yocto build
     needs: build
     if: >-
+      !inputs.preflight_only &&
       needs.build.result == 'success' &&
       needs.build.outputs.checkpointed == 'true' &&
       needs.build.outputs.cache_saved == 'true' &&

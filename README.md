@@ -75,6 +75,16 @@ other completed, compatible recipe caches can still be reused.
 模式明确禁用了这两个配方的 sstate 生成，旧构建目录不能从缓存恢复；切换后的
 第一次构建才会生成可复用缓存。其他已完成且兼容的配方缓存仍可沿用。
 
+The optional workflow input `preflight_only` validates the boot recipes and
+fetched kernel configuration in an independent concurrency group. It only
+reads existing caches, never dispatches a full-image continuation, and does
+not produce firmware artifacts. A successful preflight is not a completed
+OpenBMC image build.
+
+可选输入 `preflight_only` 用独立并发组验证启动配方和实际内核配置，不取消正在
+进行的完整镜像构建。预检只读取缓存，不自动续跑完整镜像，也不上传固件产物；
+预检通过不代表 OpenBMC 镜像已经完成。
+
 BL31 is built for `sun50i_h616` as an internal dependency and included in the
 combined SPL/U-Boot payload at the TF card's 8 KiB offset. The boot partition
 contains Image, the Zero 2 device tree, and extlinux.conf. The second partition
