@@ -63,6 +63,22 @@ class BoardMetadataTest(unittest.TestCase):
         machine = (LAYER / "conf/machine/orangepi-zero2.conf").read_text()
         self.assertIn("uboot.env;uboot.env", machine)
 
+    def test_kernel_preflight_exercises_all_patched_vendor_drivers(self):
+        recipe_path = LAYER / "recipes-kernel/linux/linux-orangepi_6.1.bb"
+        recipe = recipe_path.read_text()
+        patches = recipe_path.parent / "files"
+        self.assertEqual(set(re.findall(r"file://(\S+\.patch)", recipe)),
+                         {path.name for path in patches.glob("*.patch")})
+        rtl_patch = (patches / "0003-realtek-fix-separate-build-include-paths.patch").read_text()
+        for driver in ("rtl8189es", "rtl8189fs", "rtl8192eu", "rtl8723ds",
+                       "rtl8723du", "rtl8811cu", "rtl8812au", "rtl88x2cs"):
+            with self.subTest(driver=driver):
+                self.assertIn(driver, recipe)
+                self.assertIn(f"+++ b/drivers/net/wireless/{driver}/Makefile", rtl_patch)
+        self.assertIn("core/rtw_cmd.o", recipe)
+        self.assertIn("addtask board_preflight after do_configure", recipe)
+        self.assertNotIn("addtask board_preflight after do_configure before", recipe)
+
     def test_fat_boot_partition_does_not_depend_on_uninstalled_charset_modules(self):
         workflow = (ROOT / ".github/workflows/build-orangepi-zero2-image.yml").read_text()
         recipe = (LAYER / "recipes-kernel/linux/linux-orangepi_6.1.bb").read_text()

@@ -1,5 +1,6 @@
 """Guard the separation between board preflight and the image deliverable."""
 from pathlib import Path
+import re
 import unittest
 
 
@@ -8,6 +9,15 @@ WORKFLOW = (Path(__file__).resolve().parents[1] /
 
 
 class WorkflowModesTest(unittest.TestCase):
+    def test_hash_equivalence_database_is_in_the_persisted_sstate_directory(self):
+        values = {}
+        for name in ("SSTATE_DIR", "BB_HASHSERVE_DB_DIR"):
+            match = re.search(rf'^\s+{name} = "([^"]+)"$', WORKFLOW, re.MULTILINE)
+            self.assertIsNotNone(match, name)
+            values[name] = match[1]
+        self.assertEqual(values["BB_HASHSERVE_DB_DIR"], values["SSTATE_DIR"])
+        self.assertEqual(values["SSTATE_DIR"], "$GITHUB_WORKSPACE/yocto-sstate")
+
     def test_preflight_preserves_the_existing_image_concurrency_group(self):
         self.assertIn(
             "group: ${{ inputs.preflight_only && 'orangepi-zero2-preflight' || "
@@ -29,8 +39,9 @@ class WorkflowModesTest(unittest.TestCase):
                 step = step.split("\n      - name:", 1)[0]
                 self.assertIn("steps.build_image.outcome == 'success'", step)
 
-    def test_preflight_checks_real_kernel_configuration_and_rejects_timeout(self):
-        self.assertIn("bitbake -c configure virtual/kernel", WORKFLOW)
+    def test_preflight_compiles_real_kernel_objects_and_rejects_timeout(self):
+        self.assertIn("bitbake -c board_preflight virtual/kernel", WORKFLOW)
+        self.assertIn("patch --batch --forward --fuzz=0", WORKFLOW)
         guard = WORKFLOW.split("      - name: Require completed boot preflight\n", 1)[1]
         guard = guard.split("\n      - name:", 1)[0]
         self.assertIn("steps.build_boot.outputs.checkpointed == 'true'", guard)

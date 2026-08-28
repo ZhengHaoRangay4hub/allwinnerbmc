@@ -9,9 +9,10 @@ stage=${1:?usage: ci-build-stage.sh boot|image}
 
 case "$stage" in
   boot)
-    # Include packaging/runtime dependencies so missing environment utilities
-    # fail before the long full-image build.
-    command=(bitbake u-boot-orangepi orangepi-boot-files)
+    # Include real boot environment tools and validate board helpers early.
+    # Per-target tasks avoid pulling capture runtime dependencies into this gate.
+    command=(bitbake u-boot-orangepi orangepi-boot-files
+      orangepi-ms2130-capture:do_compile orangepi-gpio-control:do_install)
     log="$GITHUB_WORKSPACE/openbmc-boot.log"
     ;;
   image)

@@ -21,10 +21,12 @@ index 992cdec3..0264c91c 100755
  import os
  import re
  import sys
-@@ -97,4 +100,6 @@ files = os.environ.get('SOURCES', '').split()
+@@ -97,6 +100,8 @@ files = os.environ.get('SOURCES', '').split()
  cflags = os.environ.get('CPPFLAGS', '').split()
  objdir = os.environ.get('OBJDIR')
  version = os.environ.get('VERSION')
 +if version and version.startswith('u-boot-'):
 +    version = version[len('u-boot-'):]
  swig_opts = os.environ.get('SWIG_OPTS', '').split()
+ 
+ # If we were called directly rather than through our Makefile (which is often

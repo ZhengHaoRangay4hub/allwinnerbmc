@@ -11,6 +11,7 @@ SRC_URI = " \
     git://github.com/orangepi-xunlong/linux-orangepi.git;protocol=https;branch=orange-pi-6.1-sun50iw9 \
     file://0001-uwe5622-fix-out-of-tree-include-paths.patch \
     file://0002-sun50i-cpufreq-nvmem-use-opp-token-type.patch \
+    file://0003-realtek-fix-separate-build-include-paths.patch \
     file://defconfig \
     "
 SRCREV = "71144529b0334d1488624c41d0d3ba0cb03dd4c1"
@@ -43,3 +44,20 @@ do_configure:append() {
             bbfatal "TF-card boot requires CONFIG_$option=y"
     done
 }
+
+# Explicit CI preflight only: do not replace the normal kernel/modules build.
+# These objects exercise the vendor include paths and OPP API using the real
+# Yocto compiler, without waiting for a complete kernel to link first.
+do_board_preflight() {
+    unset CFLAGS CPPFLAGS CXXFLAGS LDFLAGS MACHINE
+    targets="drivers/cpufreq/sun50i-cpufreq-nvmem.o
+             drivers/net/wireless/uwe5622/unisocwcn/wcn_bus.o"
+    for driver in rtl8189es rtl8189fs rtl8192eu rtl8723ds rtl8723du \
+                  rtl8811cu rtl8812au rtl88x2cs; do
+        targets="$targets drivers/net/wireless/$driver/core/rtw_cmd.o"
+    done
+    oe_runmake -C ${S} O=${B} ${PARALLEL_MAKE} ${KERNEL_EXTRA_ARGS} $targets
+}
+do_board_preflight[dirs] = "${B}"
+do_board_preflight[nostamp] = "1"
+addtask board_preflight after do_configure

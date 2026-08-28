@@ -65,6 +65,13 @@ so unrelated recipes can finish producing reusable sstate after another fails.
 未完成的编译任务不能在指令级断点续跑。完整镜像使用 `bitbake -k`，让不受错误影响的
 配方继续完成缓存生成。
 
+The CI cache also retains the local hash-equivalence database alongside
+sstate. This preserves mappings used to reuse equivalent build outputs
+after metadata changes; identical cached tasks remain reusable as before.
+
+CI 同时把哈希等价数据库保存在 sstate 缓存目录，保留元数据变化后判断构建结果
+是否可复用的映射；完全相同任务的现有缓存仍可正常沿用。
+
 The kernel and U-Boot use pinned Git recipes with shallow downloads and
 normal sstate support. The earlier `externalsrc` mode explicitly disabled
 sstate creation for these recipes. Its old build directories cannot be
@@ -75,15 +82,20 @@ other completed, compatible recipe caches can still be reused.
 模式明确禁用了这两个配方的 sstate 生成，旧构建目录不能从缓存恢复；切换后的
 第一次构建才会生成可复用缓存。其他已完成且兼容的配方缓存仍可沿用。
 
-The optional workflow input `preflight_only` validates the boot recipes and
-fetched kernel configuration in an independent concurrency group. It only
-reads existing caches, never dispatches a full-image continuation, and does
-not produce firmware artifacts. A successful preflight is not a completed
-OpenBMC image build.
+The optional workflow input `preflight_only` validates boot recipes, compiles
+the capture helper with its strict warning flags, installs the GPIO helper,
+and checks the fetched kernel configuration. It also compiles representative
+vendor Wi-Fi and CPU-frequency objects with the actual Yocto compiler. The
+independent concurrency group does not cancel a full image build. Preflight
+only reads caches, never dispatches a full-image continuation, and produces
+no firmware artifacts. Passing it does not mean the full kernel or OpenBMC
+image has been built.
 
-可选输入 `preflight_only` 用独立并发组验证启动配方和实际内核配置，不取消正在
-进行的完整镜像构建。预检只读取缓存，不自动续跑完整镜像，也不上传固件产物；
-预检通过不代表 OpenBMC 镜像已经完成。
+可选输入 `preflight_only` 验证启动配方、按严格警告选项编译采集程序、检查 GPIO
+工具安装和实际内核配置，并使用真正的 Yocto 编译器编译厂商 Wi-Fi 与调频驱动的
+代表性目标文件。它使用独立并发组，不取消正在进行的完整镜像构建；只读取缓存，
+不自动续跑完整镜像，也不上传固件产物。预检通过不代表完整内核或 OpenBMC 镜像
+已经编译完成。
 
 BL31 is built for `sun50i_h616` as an internal dependency and included in the
 combined SPL/U-Boot payload at the TF card's 8 KiB offset. The boot partition

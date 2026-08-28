@@ -158,7 +158,7 @@ int main(int argc, char **argv) {
         }
     }
     signal(SIGINT, on_signal); signal(SIGTERM, on_signal);
-    for (int attempts = 0; !stop; ++attempts) {
+    while (!stop) {
         if (capture_once(device, output, width, height, fps) < 0)
             fprintf(stderr, "MS2130: waiting for %s (%s)\n", device, strerror(errno));
         if (!stop) sleep(2);

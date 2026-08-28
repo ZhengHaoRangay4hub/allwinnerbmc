@@ -109,12 +109,12 @@ jobs:
           }
 
           clone_ref orangepi-xunlong/linux-orangepi orange-pi-6.1-sun50iw9 linux-orangepi
-          git -C linux-orangepi apply \
-            "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/0001-uwe5622-fix-out-of-tree-include-paths.patch" \
-            "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/0002-sun50i-cpufreq-nvmem-use-opp-token-type.patch"
-
           test "$(git -C linux-orangepi rev-parse HEAD)" = \
             "$(sed -n 's/^Linux commit: //p' sources/versions.txt)"
+          # Use the same patch implementation and strict context as BitBake QA.
+          for board_patch in "$GITHUB_WORKSPACE/meta-orangepi/recipes-kernel/linux/files/"*.patch; do
+            patch --batch --forward --fuzz=0 -p1 -d linux-orangepi -i "$board_patch"
+          done
 
       - name: Generate Linux defconfig for OpenBMC
         shell: bash
@@ -167,6 +167,7 @@ jobs:
           PARALLEL_MAKE:pn-gcc-cross-aarch64 = "-j4"
           DL_DIR = "$GITHUB_WORKSPACE/yocto-downloads"
           SSTATE_DIR = "$GITHUB_WORKSPACE/yocto-sstate"
+          BB_HASHSERVE_DB_DIR = "$GITHUB_WORKSPACE/yocto-sstate"
           TMPDIR = "$GITHUB_WORKSPACE/yocto-tmp"
           # GitHub-hosted runners have direct Internet access. Do not carry
           # the domestic proxy from the shared-cluster local.conf template
@@ -190,7 +191,7 @@ jobs:
             rm -f "$zlib_tar"
           fi
 
-      - name: Validate OpenBMC boot components (checkpointable)
+      - name: Validate OpenBMC boot components and board helpers (checkpointable)
         id: build_boot
         shell: bash
         run: |
@@ -207,7 +208,7 @@ jobs:
           echo '::error::Board preflight exceeded its time budget; it is not a successful validation.'
           exit 1
 
-      - name: Validate fetched kernel configuration (preflight only)
+      - name: Validate kernel configuration and driver objects (preflight only)
         if: inputs.preflight_only && success()
         shell: bash
         run: |
@@ -217,7 +218,7 @@ jobs:
           . ./oe-init-build-env "$GITHUB_WORKSPACE/openbmc-build"
           set -u
           timeout --signal=TERM --kill-after=2m 20m \
-            bitbake -c configure virtual/kernel 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-kernel-config.log"
+            bitbake -c board_preflight virtual/kernel 2>&1 | tee "$GITHUB_WORKSPACE/openbmc-kernel-config.log"
           echo 'Board recipes passed preflight. This run does not produce a flashable image.' \
             >> "$GITHUB_STEP_SUMMARY"
 

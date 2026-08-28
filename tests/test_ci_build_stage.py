@@ -69,11 +69,13 @@ sys.exit(rc)
     def checkpoint(self):
         return self.output.read_text().strip()
 
-    def test_boot_stage_builds_image_dependencies_first(self):
+    def test_boot_stage_builds_boot_dependencies_and_compiles_board_helpers(self):
         result = self.run_stage("boot")
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertEqual(json.loads(self.calls.read_text()),
-                         ["u-boot-orangepi", "orangepi-boot-files"])
+                         ["u-boot-orangepi", "orangepi-boot-files",
+                          "orangepi-ms2130-capture:do_compile",
+                          "orangepi-gpio-control:do_install"])
         self.assertEqual(self.checkpoint(), "checkpointed=false")
         self.assertIn("OPENBMC_BUILD_DEADLINE=", self.env_file.read_text())
 

@@ -14,10 +14,10 @@ Upstream-Status: Inappropriate [board-port build fix]
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/drivers/cpufreq/sun50i-cpufreq-nvmem.c b/drivers/cpufreq/sun50i-cpufreq-nvmem.c
-index 7f1c2d3..8a2b4c5 100644
 --- a/drivers/cpufreq/sun50i-cpufreq-nvmem.c
 +++ b/drivers/cpufreq/sun50i-cpufreq-nvmem.c
-@@ -112,6 +112,6 @@ static int sun50i_cpufreq_nvmem_probe(struct platform_device *pdev)
+@@ -111,7 +111,7 @@
+ static int sun50i_cpufreq_nvmem_probe(struct platform_device *pdev)
  {
  	const struct of_device_id *match;
 -	struct opp_table **opp_tables;
