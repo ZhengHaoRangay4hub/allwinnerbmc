@@ -186,13 +186,46 @@ the shared cluster. Do not place SSH keys or GitHub tokens in this repository.
 `scripts/` 中的辅助脚本记录了共享集群上的依赖准备方式。不要把 SSH 私钥或
 GitHub token 放入本仓库。
 
-## Current artifacts / 当前产物
+## Released TF-card image / 已发布 TF 卡镜像
 
-`artifacts/orangepi-zero2-linux/` contains the verified standalone H616 Linux
-build output (`Image`, DTB, `System.map`, and kernel config). The full
-OpenBMC image remains a build target; it is not claimed as complete until a
-successful BitBake image, matching checksum, and passing content checks are present.
+The first complete OpenBMC TF-card image is published in the
+[`openbmc-orangepi-zero2-20260829`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260829)
+release. It was built by
+[GitHub Actions run 17](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33222879648)
+from commit `dd9b3362`.
 
-`artifacts/orangepi-zero2-linux/` 包含已经校验的 H616 独立 Linux 编译产物
-（`Image`、DTB、`System.map` 和内核配置）。完整 OpenBMC 镜像仍需通过 BitBake
-成功构建、核对校验和并通过镜像内容检查后，才能宣布完成。
+首个完整 OpenBMC TF 卡镜像已发布到
+[`openbmc-orangepi-zero2-20260829`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260829)
+Release。该镜像由
+[GitHub Actions 第 17 轮](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33222879648)
+基于提交 `dd9b3362` 构建。
+
+- Image / 镜像：
+  [`obmc-phosphor-image-orangepi-zero2-20260829002057.wic`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260829/obmc-phosphor-image-orangepi-zero2-20260829002057.wic)
+- Size / 大小：`324259840` bytes（约 309.2 MiB）
+- SHA-256：`6e64a4fbbb5e672726482a69480c8b7305ea134c7557e49dbb293cd0b58a6aa8`
+- Checksum file / 校验文件：
+  [`SHA256SUMS`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260829/SHA256SUMS)
+- Verification report / 校验报告：
+  [`obmc-phosphor-image-orangepi-zero2-20260829002057.wic.verification.json`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260829/obmc-phosphor-image-orangepi-zero2-20260829002057.wic.verification.json)
+
+This is one directly flashable whole-card image for both the 512 MB and 1 GB
+Orange Pi Zero 2 variants. Linux, the device tree, U-Boot, BL31, the boot
+environment, and the OpenBMC root filesystem are integrated into the image;
+they are not separate release assets. CI and an independent macOS recheck
+produced identical verification reports and matching SHA-256 values.
+
+这是同时用于 Orange Pi Zero 2 512 MB 与 1 GB 版本的单一整卡镜像，可直接写入
+TF 卡。Linux、设备树、U-Boot、BL31、启动环境和 OpenBMC 根文件系统均已集成在
+镜像内，不作为独立 Release 产物发布。CI 校验与 macOS 本地复验报告完全一致，
+SHA-256 也与发布清单相符。
+
+Before writing the image, verify `SHA256SUMS` and carefully confirm the target
+device. Imaging tools such as balenaEtcher can write the `.wic` file directly;
+advanced users may use `dd` against the entire card device, not a partition.
+Selecting the wrong device destroys its contents. Physical boot testing on
+both RAM variants has not yet been performed.
+
+烧录前请先核对 `SHA256SUMS`，并仔细确认目标设备。balenaEtcher 等镜像工具可以
+直接写入 `.wic`；使用 `dd` 时必须选择整张 TF 卡设备而不是某个分区。选错设备会
+覆盖其中的数据。目前尚未在两种内存版本的实板上完成启动测试。
