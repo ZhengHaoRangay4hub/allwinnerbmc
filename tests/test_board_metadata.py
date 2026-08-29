@@ -151,9 +151,7 @@ class BoardMetadataTest(unittest.TestCase):
         files = LAYER / "recipes-phosphor/webui/webui-vue"
         additions = json.loads((files / "zh-CN-additions.json").read_text())
         merger = (files / "merge-webui-locales.py").read_text()
-        default_patch = (
-            files / "0001-default-to-simplified-chinese.patch"
-        ).read_text()
+        default_language = (files / "default-webui-language.py").read_text()
 
         self.assertIn(
             'CHINESE_LOCALE_SRCREV = "c757b32cc2940f19429af1903d3d0bda9f20c150"',
@@ -167,8 +165,9 @@ class BoardMetadataTest(unittest.TestCase):
         self.assertIn("Simplified Chinese locale is missing", merger)
         self.assertIn("Simplified Chinese placeholder mismatch", merger)
         self.assertIn("%{", merger)
-        self.assertIn("|| 'zh-CN'", default_patch)
-        self.assertIn("addAlias('zh', 'zh-CN')", default_patch)
+        self.assertIn("replace_once", default_language)
+        self.assertIn("|| 'zh-CN'", default_language)
+        self.assertIn("addAlias('zh', 'zh-CN')", default_language)
         self.assertEqual(additions["appHeader"]["language"], "语言")
         self.assertEqual(additions["pageNetwork"]["gateway"], "网关")
         self.assertEqual(additions["pageKvm"]["captureScreenshot"], "截取屏幕截图")
