@@ -9,7 +9,7 @@ DEPENDS = "dtc-native"
 COMPATIBLE_MACHINE = "orangepi-zero2"
 PACKAGE_ARCH = "${MACHINE_ARCH}"
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 B = "${WORKDIR}/build"
 
 ORANGEPI_BASE_DTB = "${DEPLOY_DIR_IMAGE}/sun50i-h616-orangepi-zero2.dtb"
