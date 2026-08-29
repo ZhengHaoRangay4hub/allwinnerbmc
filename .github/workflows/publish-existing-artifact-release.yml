@@ -1,0 +1,84 @@
+name: Publish existing image artifact
+run-name: "Publish OpenBMC artifact from run ${{ inputs.run_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Workflow run containing the TF-card image artifact"
+        required: true
+        type: string
+      artifact_name:
+        description: "Artifact containing the WIC image and checksums"
+        required: true
+        type: string
+      release_id:
+        description: "Existing draft Release database ID"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ inputs.run_id }}
+      ARTIFACT_NAME: ${{ inputs.artifact_name }}
+      RELEASE_ID: ${{ inputs.release_id }}
+    steps:
+      - name: Validate requested source and destination
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._-]+$ ]]
+
+      - name: Download the completed image artifact
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p release-files
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT_NAME" --dir release-files
+          image=$(find release-files -maxdepth 1 -type f -name '*.wic' -size +0c -print -quit)
+          test -n "$image"
+          (cd release-files && sha256sum -c SHA256SUMS)
+
+      - name: Upload the WIC image to the draft Release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          image=$(find release-files -maxdepth 1 -type f -name '*.wic' -size +0c -print -quit)
+          name=$(basename "$image")
+          response=$(mktemp)
+          code=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'Content-Type: application/octet-stream' \
+            --data-binary "@$image" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name")
+          test "$code" = 201
+          test "$(jq -r '.state' "$response")" = uploaded
+          test "$(jq -r '.size' "$response")" = "$(stat -c '%s' "$image")"
+          jq '{id, name, size, state}' "$response"
+
+      - name: Publish the completed Release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          response=$(curl --fail --silent --show-error \
+            --request PATCH \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'Content-Type: application/json' \
+            --data '{"draft":false,"prerelease":false,"make_latest":"true"}' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")
+          test "$(jq -r '.draft' <<<"$response")" = false
+          jq '{tag_name, draft, published_at, html_url}' <<<"$response"
