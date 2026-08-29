@@ -1,0 +1,16 @@
+[Unit]
+Description=Orange Pi Zero 2 onboard Wi-Fi
+After=systemd-modules-load.service
+Before=network.target
+
+[Service]
+Type=simple
+ExecStartPre=/sbin/modprobe uwe5622_bsp_sdio
+ExecStartPre=/sbin/modprobe sprdwl_ng
+ExecStart=/usr/sbin/wpa_supplicant -i wlan0 -D nl80211 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=wpa_supplicant
+
+[Install]
+WantedBy=multi-user.target

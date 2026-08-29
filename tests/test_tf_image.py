@@ -162,12 +162,23 @@ class ImageFilesystemTest(unittest.TestCase):
         cls.addClassCleanup(cls.temp.cleanup)
         cls.directory = Path(cls.temp.name)
         cls.rootdir = cls.directory / "roottree"
-        for subdir in ("etc", "usr/bin", "usr/sbin", "usr/lib/systemd/system", "usr/share/www"):
+        for subdir in (
+            "etc", "etc/wpa_supplicant", "lib/firmware",
+            "lib/modules/6.1.31-orangepi-openbmc/kernel/drivers/net/wireless/uwe5622/unisocwcn",
+            "lib/modules/6.1.31-orangepi-openbmc/kernel/drivers/net/wireless/uwe5622/unisocwifi",
+            "lib/modules/6.1.31-orangepi-openbmc/kernel/net/wireless",
+            "lib/modules/6.1.31-orangepi-openbmc/kernel/net/rfkill",
+            "usr/bin", "usr/sbin", "usr/lib/systemd/network",
+            "usr/lib/systemd/system", "usr/share/www",
+        ):
             (cls.rootdir / subdir).mkdir(parents=True, exist_ok=True)
         elf = bytearray(64)
         elf[:6] = b"\x7fELF\x02\x01"
         struct.pack_into("<H", elf, 18, 183)
-        for name in ("usr/lib/systemd/systemd", "usr/bin/bmcweb", "usr/bin/fw_printenv"):
+        for name in (
+            "usr/lib/systemd/systemd", "usr/bin/bmcweb", "usr/bin/fw_printenv",
+            "usr/sbin/iw", "usr/sbin/wpa_supplicant", "usr/sbin/rfkill",
+        ):
             path = cls.rootdir / name
             path.write_bytes(elf)
             path.chmod(0o755)
@@ -183,6 +194,35 @@ class ImageFilesystemTest(unittest.TestCase):
         (cls.rootdir / "etc/fw_env.config").write_text("/boot/uboot.env 0x0 0x20000\n")
         (cls.rootdir / "etc/u-boot-initial-env").write_text(
             "bootcmd=run distro_bootcmd\nboot_targets=mmc0 usb0\n")
+        (cls.rootdir / "lib/firmware/wcnmodem.bin").write_bytes(
+            b"non-bootable UWE5622 firmware fixture".ljust(900_001, b"\0")
+        )
+        (cls.rootdir / "lib/firmware/wifi_2355b001_1ant.ini").write_text(
+            "Major = 2\nCalib_Bypass = 11758\n"
+        )
+        modules_dir = cls.rootdir / "lib/modules/6.1.31-orangepi-openbmc"
+        module_paths = {
+            "uwe5622_bsp_sdio": "kernel/drivers/net/wireless/uwe5622/unisocwcn/uwe5622_bsp_sdio.ko",
+            "sprdwl_ng": "kernel/drivers/net/wireless/uwe5622/unisocwifi/sprdwl_ng.ko",
+            "cfg80211": "kernel/net/wireless/cfg80211.ko",
+            "rfkill": "kernel/net/rfkill/rfkill.ko",
+        }
+        for module_path in module_paths.values():
+            (modules_dir / module_path).write_bytes(b"non-bootable module fixture\n")
+        (modules_dir / "modules.dep").write_text("".join(
+            f"{module_path}:\n" for module_path in module_paths.values()
+        ))
+        (cls.rootdir / "usr/lib/systemd/system/orangepi-wifi.service").write_text(
+            "[Service]\nExecStartPre=/sbin/modprobe uwe5622_bsp_sdio\n"
+            "ExecStartPre=/sbin/modprobe sprdwl_ng\n"
+            "ExecStart=/usr/sbin/wpa_supplicant -i wlan0\n"
+        )
+        (cls.rootdir / "usr/lib/systemd/network/80-wlan0.network").write_text(
+            "[Match]\nName=wlan0\n[Network]\nDHCP=yes\n"
+        )
+        (cls.rootdir / "etc/wpa_supplicant/wpa_supplicant-wlan0.conf").write_text(
+            "ctrl_interface=/run/wpa_supplicant\nupdate_config=1\n"
+        )
         cls.rootfs = cls.directory / "root.ext4"
         cls.make_rootfs(cls.rootfs)
         dts = cls.directory / "board.dts"

@@ -180,6 +180,54 @@ def check_environment(data):
     return variables[b"bootcmd"].decode()
 
 
+def check_wifi_support(path):
+    listing = command("debugfs", "-R", "ls -p /lib/modules", path).decode()
+    versions = re.findall(r"/\d+/04\d+/\d+/\d+/([^/]+)/", listing)
+    versions = [name for name in versions if name not in (".", "..")]
+    require(len(versions) == 1, "Expected exactly one installed kernel module tree")
+    modules_dir = f"/lib/modules/{versions[0]}"
+    dependencies = command(
+        "debugfs", "-R", f"cat {modules_dir}/modules.dep", path
+    ).decode()
+    for module in ("uwe5622_bsp_sdio", "sprdwl_ng", "cfg80211", "rfkill"):
+        match = re.search(
+            rf"(?m)^([^:]*\b{re.escape(module)}\.ko(?:\.[a-z0-9]+)?):",
+            dependencies,
+        )
+        require(match, f"Wi-Fi kernel module is absent: {module}")
+        metadata = command(
+            "debugfs", "-R", f"stat {modules_dir}/{match.group(1)}", path
+        ).decode()
+        require("Type: regular" in metadata, f"Wi-Fi module file is absent: {module}")
+
+    firmware = command("debugfs", "-R", "cat /lib/firmware/wcnmodem.bin", path)
+    require(len(firmware) > 900_000 and any(firmware), "UWE5622 firmware is absent/truncated")
+    board_config = command(
+        "debugfs", "-R", "cat /lib/firmware/wifi_2355b001_1ant.ini", path
+    )
+    require(b"Major =" in board_config and b"Calib_Bypass =" in board_config,
+            "UWE5622 board calibration is absent/invalid")
+
+    service = command(
+        "debugfs", "-R", "cat /usr/lib/systemd/system/orangepi-wifi.service", path
+    )
+    require(b"modprobe uwe5622_bsp_sdio" in service and
+            b"modprobe sprdwl_ng" in service and b"wpa_supplicant" in service,
+            "Orange Pi Wi-Fi startup service is incomplete")
+    network = command(
+        "debugfs", "-R", "cat /usr/lib/systemd/network/80-wlan0.network", path
+    )
+    require(b"Name=wlan0" in network and b"DHCP=yes" in network,
+            "wlan0 networkd configuration is absent")
+    config = command(
+        "debugfs", "-R", "cat /etc/wpa_supplicant/wpa_supplicant-wlan0.conf", path
+    )
+    require(b"ctrl_interface=/run/wpa_supplicant" in config,
+            "wlan0 wpa_supplicant configuration is absent")
+    for binary in ("/usr/sbin/iw", "/usr/sbin/wpa_supplicant", "/usr/sbin/rfkill"):
+        check_aarch64(command("debugfs", "-R", "cat " + binary, path), binary)
+
+
 def extract_region(stream, offset, size, output):
     """Copy only the chosen partition; sparse output avoids duplicating zeroes."""
     stream.seek(offset)
@@ -226,6 +274,7 @@ def check_rootfs(path, expected_bootcmd=None):
         require(variables["bootcmd"] == expected_bootcmd, "Fallback boot command differs from FAT environment")
     setter = command("debugfs", "-R", "stat /usr/bin/fw_setenv", path).decode()
     require("Type: symlink" in setter and "fw_printenv" in setter, "fw_setenv utility is absent")
+    check_wifi_support(path)
     return release.strip()
 
 

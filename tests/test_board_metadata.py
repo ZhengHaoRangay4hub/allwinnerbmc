@@ -104,6 +104,45 @@ class BoardMetadataTest(unittest.TestCase):
         self.assertIn("arch/arm/dts/sun50i-h616-orangepi-zero2.dts", patch)
         self.assertIn('+\tbroken-cd;', patch)
 
+    def test_wifi_support_reuses_prebuilt_kernel_modules(self):
+        packagegroup = (
+            LAYER / "recipes-phosphor/packagegroups/packagegroup-orangepi-zero2.bb"
+        ).read_text()
+        firmware = (
+            LAYER / "recipes-bsp/firmware/orangepi-uwe5622-firmware.bb"
+        ).read_text()
+        support_dir = LAYER / "recipes-connectivity/wifi/orangepi-wifi-support"
+        service = (support_dir / "orangepi-wifi.service").read_text()
+        network = (support_dir / "80-wlan0.network").read_text()
+        modules = (support_dir / "orangepi-uwe5622.conf").read_text().splitlines()
+
+        for package in (
+            "kernel-module-uwe5622-bsp-sdio",
+            "kernel-module-sprdwl-ng",
+            "kernel-module-cfg80211",
+            "orangepi-uwe5622-firmware",
+            "orangepi-wifi-support",
+            "iw",
+            "wpa-supplicant",
+        ):
+            with self.subTest(package=package):
+                self.assertIn(package, packagegroup)
+
+        self.assertEqual(modules, ["uwe5622_bsp_sdio", "sprdwl_ng"])
+        self.assertIn("modprobe uwe5622_bsp_sdio", service)
+        self.assertIn("modprobe sprdwl_ng", service)
+        self.assertIn("wpa_supplicant -i wlan0 -D nl80211", service)
+        self.assertIn("Name=wlan0", network)
+        self.assertIn("DHCP=yes", network)
+        self.assertIn("RequiredForOnline=no", network)
+
+        self.assertIn(
+            'FIRMWARE_SRCREV = "db5e86200ae592c467c4cfa50ec0c66cbc40b158"',
+            firmware,
+        )
+        self.assertIn("wcnmodem.sha256sum", firmware)
+        self.assertIn("boardconfig.sha256sum", firmware)
+
     def test_board_recipe_shell_functions_parse(self):
         function = re.compile(r"^do_[\w:]+\(\) \{\n(.*?)^\}", re.MULTILINE | re.DOTALL)
         for recipe in LAYER.rglob("*.bb"):
