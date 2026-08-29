@@ -167,6 +167,22 @@ def check_aarch64(data, name):
     require(struct.unpack_from("<H", data, 18)[0] == 183, f"{name} is not AArch64")
 
 
+def check_rootfs_aarch64(path, binary):
+    metadata = command("debugfs", "-R", "stat " + binary, path).decode()
+    target = binary
+    if "Type: symlink" in metadata:
+        link = re.search(r'Fast link dest: "([^"]+)"', metadata)
+        require(link and link.group(1).startswith("/"),
+                f"{binary} has an invalid symbolic-link target")
+        target = link.group(1)
+        target_metadata = command("debugfs", "-R", "stat " + target, path).decode()
+        require("Type: regular" in target_metadata,
+                f"{binary} symbolic-link target is absent")
+    else:
+        require("Type: regular" in metadata, f"{binary} is not a regular file or symlink")
+    check_aarch64(command("debugfs", "-R", "cat " + target, path), binary)
+
+
 def check_environment(data):
     require(len(data) == 0x20000, "Incorrect U-Boot environment size")
     require(struct.unpack_from("<I", data)[0] == zlib.crc32(data[4:]),
@@ -225,7 +241,7 @@ def check_wifi_support(path):
     require(b"ctrl_interface=/run/wpa_supplicant" in config,
             "wlan0 wpa_supplicant configuration is absent")
     for binary in ("/usr/sbin/iw", "/usr/sbin/wpa_supplicant", "/usr/sbin/rfkill"):
-        check_aarch64(command("debugfs", "-R", "cat " + binary, path), binary)
+        check_rootfs_aarch64(path, binary)
 
 
 def extract_region(stream, offset, size, output):

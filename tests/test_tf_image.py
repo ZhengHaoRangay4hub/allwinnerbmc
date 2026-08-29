@@ -177,11 +177,12 @@ class ImageFilesystemTest(unittest.TestCase):
         struct.pack_into("<H", elf, 18, 183)
         for name in (
             "usr/lib/systemd/systemd", "usr/bin/bmcweb", "usr/bin/fw_printenv",
-            "usr/sbin/iw", "usr/sbin/wpa_supplicant", "usr/sbin/rfkill",
+            "usr/sbin/iw", "usr/sbin/wpa_supplicant", "usr/sbin/rfkill.rfkill",
         ):
             path = cls.rootdir / name
             path.write_bytes(elf)
             path.chmod(0o755)
+        (cls.rootdir / "usr/sbin/rfkill").symlink_to("/usr/sbin/rfkill.rfkill")
         (cls.rootdir / "usr/lib/os-release").write_text(
             'ID=openbmc-phosphor\nNAME="Non-bootable verification test fixture"\n')
         (cls.rootdir / "usr/lib/systemd/system/bmcweb.service").write_text(
