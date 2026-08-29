@@ -187,7 +187,7 @@ class ImageFilesystemTest(unittest.TestCase):
         cls.make_rootfs(cls.rootfs)
         dts = cls.directory / "board.dts"
         dts.write_text('/dts-v1/; / { compatible = "xunlong,orangepi-zero2", '
-                       '"allwinner,sun50i-h616"; };')
+                       '"allwinner,sun50i-h616"; soc { mmc@4020000 { broken-cd; }; }; };')
         cls.dtb = cls.directory / "board.dtb"
         VERIFY.command("dtc", "-I", "dts", "-O", "dtb", "-o", cls.dtb, dts)
         cls.fit = cls.make_fit("complete")

@@ -87,6 +87,23 @@ class BoardMetadataTest(unittest.TestCase):
                 self.assertIn(f"-e {option}", workflow)
                 self.assertIn(option, recipe)
 
+    def test_tf_card_detect_fix_reuses_cached_kernel_dtb(self):
+        machine = (LAYER / "conf/machine/orangepi-zero2.conf").read_text()
+        recipe = (LAYER / "recipes-bsp/boot/orangepi-fixed-kernel-dtb.bb").read_text()
+        patch = (LAYER / "recipes-bsp/u-boot/files/0004-orangepi-zero2-ignore-broken-card-detect.patch").read_text()
+
+        self.assertIn("orangepi-fixed-kernel-dtb", machine)
+        self.assertIn(
+            "sun50i-h616-orangepi-zero2-openbmc.dtb;sun50i-h616-orangepi-zero2.dtb",
+            machine,
+        )
+        self.assertIn('do_compile[depends] += "virtual/kernel:do_deploy"', recipe)
+        self.assertIn("fdtput -d", recipe)
+        self.assertIn("broken-cd", recipe)
+        self.assertNotIn("file://0004-orangepi-zero2", (LAYER / "recipes-kernel/linux/linux-orangepi_6.1.bb").read_text())
+        self.assertIn("arch/arm/dts/sun50i-h616-orangepi-zero2.dts", patch)
+        self.assertIn('+\tbroken-cd;', patch)
+
     def test_board_recipe_shell_functions_parse(self):
         function = re.compile(r"^do_[\w:]+\(\) \{\n(.*?)^\}", re.MULTILINE | re.DOTALL)
         for recipe in LAYER.rglob("*.bb"):

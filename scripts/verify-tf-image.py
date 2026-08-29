@@ -94,6 +94,15 @@ def fdt_property(path, node, prop, kind="s"):
     return command("fdtget", "-t", kind, path, node, prop).decode().strip()
 
 
+def check_card_detect(path, label):
+    node = "/soc/mmc@4020000"
+    properties = command("fdtget", "-p", path, node).decode().split()
+    require("cd-gpios" not in properties,
+            f"{label} DTB still depends on the PF6 card-detect GPIO")
+    require("broken-cd" in properties,
+            f"{label} DTB is missing broken-cd for TF-card probing")
+
+
 def check_fit(path):
     config = fdt_property(path, "/configurations", "default")
     require(re.fullmatch(r"[A-Za-z0-9_,.+@-]+", config), "Invalid default FIT configuration")
@@ -126,6 +135,9 @@ def check_fit(path):
     require(len(tree) >= 40 and tree[:4] == b"\xd0\x0d\xfe\xed" and
             40 <= struct.unpack_from(">I", tree, 4)[0] <= len(tree),
             "Default FIT device tree is missing or truncated")
+    tree_path = path.with_name("u-boot-control.dtb")
+    tree_path.write_bytes(tree)
+    check_card_detect(tree_path, "U-Boot control")
     return payloads
 
 
@@ -241,6 +253,7 @@ def verify(image):
         compatible = fdt_property(temp / "board.dtb", "/", "compatible").split()
         require("xunlong,orangepi-zero2" in compatible and "allwinner,sun50i-h616" in compatible,
                 "Boot partition contains the wrong board's DTB")
+        check_card_detect(temp / "board.dtb", "Kernel")
         check_extlinux((temp / "extlinux.conf").read_text())
         bootcmd = check_environment((temp / "uboot.env").read_bytes())
         superblock = read_at(stream, root["offset"] + 1024, 1024)

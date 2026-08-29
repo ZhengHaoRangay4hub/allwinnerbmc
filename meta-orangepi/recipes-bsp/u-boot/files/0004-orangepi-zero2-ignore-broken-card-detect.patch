@@ -8,17 +8,31 @@ Upstream-Status: Inappropriate [board-specific card-detect workaround]
 The H616 BROM can load SPL from the TF card even on boards where the PF6
 card-detect signal is not asserted.  The legacy sunxi MMC driver then
 checks PF6, reports "MMC: no card present", and stops with -ENOMEDIUM
-before it can load U-Boot proper from the same card.
+before it can load U-Boot proper from the same card.  After bypassing
+that check, U-Boot proper repeats it through the DM MMC device tree.
 
-Leave the MMC0 card-detect pin empty so the legacy driver attempts card
-initialisation directly.  This matches the polling behaviour used when no
-card-detect GPIO is configured and keeps the data and clock wiring
-unchanged.
+Leave the legacy MMC0 card-detect pin empty and mark the DM MMC node as
+broken-cd, so both stages attempt card initialisation directly.  This
+keeps the data and clock wiring unchanged.
 
 Signed-off-by: ZhengHaoRangay4hub <ZhengHaoRangay4hub@users.noreply.github.com>
 ---
- configs/orangepi_zero2_defconfig | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ arch/arm/dts/sun50i-h616-orangepi-zero2.dts | 2 +-
+ configs/orangepi_zero2_defconfig            | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/dts/sun50i-h616-orangepi-zero2.dts b/arch/arm/dts/sun50i-h616-orangepi-zero2.dts
+--- a/arch/arm/dts/sun50i-h616-orangepi-zero2.dts
++++ b/arch/arm/dts/sun50i-h616-orangepi-zero2.dts
+@@ -92,7 +92,7 @@
+ 
+ &mmc0 {
+ 	vmmc-supply = <&reg_dcdce>;
+-	cd-gpios = <&pio 5 6 GPIO_ACTIVE_LOW>;	/* PF6 */
++	broken-cd;
+ 	bus-width = <4>;
+ 	status = "okay";
+ };
 
 diff --git a/configs/orangepi_zero2_defconfig b/configs/orangepi_zero2_defconfig
 index bfe1837..427c7ec 100644
