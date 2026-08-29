@@ -1,4 +1,5 @@
 """Fast checks for board metadata contracts with the vendored OE-Core."""
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -142,6 +143,39 @@ class BoardMetadataTest(unittest.TestCase):
         )
         self.assertIn("wcnmodem.sha256sum", firmware)
         self.assertIn("boardconfig.sha256sum", firmware)
+
+    def test_webui_has_complete_default_simplified_chinese_locale(self):
+        recipe = (
+            LAYER / "recipes-phosphor/webui/webui-vue_%.bbappend"
+        ).read_text()
+        files = LAYER / "recipes-phosphor/webui/webui-vue"
+        additions = json.loads((files / "zh-CN-additions.json").read_text())
+        merger = (files / "merge-webui-locales.py").read_text()
+        default_patch = (
+            files / "0001-default-to-simplified-chinese.patch"
+        ).read_text()
+
+        self.assertIn(
+            'CHINESE_LOCALE_SRCREV = "c757b32cc2940f19429af1903d3d0bda9f20c150"',
+            recipe,
+        )
+        self.assertIn(
+            'SRC_URI[zhcn.sha256sum] = "3a2e77c4576902b83f6363c9ddf8f78e8cacbe8ca476da5ce1228c8a8949cf21"',
+            recipe,
+        )
+        self.assertIn("merge-webui-locales.py", recipe)
+        self.assertIn("Simplified Chinese locale is missing", merger)
+        self.assertIn("Simplified Chinese placeholder mismatch", merger)
+        self.assertIn("%{", merger)
+        self.assertIn("|| 'zh-CN'", default_patch)
+        self.assertIn("addAlias('zh', 'zh-CN')", default_patch)
+        self.assertEqual(additions["appHeader"]["language"], "语言")
+        self.assertEqual(additions["pageNetwork"]["gateway"], "网关")
+        self.assertEqual(additions["pageKvm"]["captureScreenshot"], "截取屏幕截图")
+        self.assertEqual(
+            additions["pageUserManagement"]["toast"]["rootCannotBeSelected"],
+            "批量操作不能包含 root 用户。",
+        )
 
     def test_board_recipe_shell_functions_parse(self):
         function = re.compile(r"^do_[\w:]+\(\) \{\n(.*?)^\}", re.MULTILINE | re.DOTALL)

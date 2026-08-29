@@ -1,0 +1,147 @@
+{
+    "appHeader": {
+        "language": "语言"
+    },
+    "appNavigation": {
+        "snmpAlerts": "@:appPageTitle.snmpAlerts"
+    },
+    "appPageTitle": {
+        "snmpAlerts": "SNMP 告警"
+    },
+    "global": {
+        "accessDeniedAlert": {
+            "message": "当前会话不允许执行此操作。请联系系统管理员检查您的权限。"
+        },
+        "ariaLabel": {
+            "buttonDisabledUntilChecked": "选中复选框后才能使用此按钮",
+            "checkboxToEnableButton": "选中此复选框以启用确认按钮"
+        },
+        "pageTitle": {
+            "missing": "页面缺少标题"
+        }
+    },
+    "pageCertificates": {
+        "certificateDetails": "证书详细信息",
+        "table": {
+            "issuedToEmail": "颁发对象电子邮件地址",
+            "issuedToOrganizationUnit": "颁发对象组织单位（OU）",
+            "issuerEmail": "颁发者电子邮件地址",
+            "issuerInformation": "颁发者信息",
+            "issuerOrganizationUnit": "颁发者组织单位（OU）",
+            "keyUsage": "密钥用途",
+            "subjectInformation": "主题信息"
+        },
+        "validityPeriod": "有效期"
+    },
+    "pageDateTime": {
+        "alert": {
+            "message": "要更改整个应用中日期和时间的显示方式（UTC 或浏览器时区偏移），请前往 "
+        }
+    },
+    "pageDumps": {
+        "dumpTypes": {
+            "bmcDump": "BMC 转储",
+            "systemDump": "系统转储（会中断运行）"
+        }
+    },
+    "pageFirmware": {
+        "alert": {
+            "insufficientPrivilege": "当前登录账户无权执行固件操作。请联系系统管理员检查您的权限。"
+        },
+        "sectionTitleBiosCards": "BIOS"
+    },
+    "pageInventory": {
+        "table": {
+            "errorCorrection": "错误纠正",
+            "rankCount": "Rank 数量"
+        }
+    },
+    "pageKvm": {
+        "captureScreenshot": "截取屏幕截图"
+    },
+    "pageNetwork": {
+        "dhcp6": "DHCPv6",
+        "gateway": "网关",
+        "ipVersion": "IP 版本",
+        "ipv6DefaultGateway": "IPv6 默认网关",
+        "modal": {
+            "editIPv6DefaultGatewayTitle": "编辑 IPv6 默认网关"
+        }
+    },
+    "pagePolicies": {
+        "basicAuth": "HTTP 基本身份验证",
+        "basicAuthDescription": "允许使用 HTTP 基本身份验证登录 Redfish/HTTPS 接口。",
+        "toast": {
+            "errorBasicAuthDisabled": "禁用基本身份验证安全设置时出错。",
+            "errorBasicAuthEnabled": "启用基本身份验证安全设置时出错。",
+            "successBasicAuthDisabled": "已成功禁用基本身份验证安全设置。",
+            "successBasicAuthEnabled": "已成功启用基本身份验证安全设置。"
+        }
+    },
+    "pageProfileSettings": {
+        "defaultUTC": "默认（UTC）",
+        "sessionPrivilege": "会话权限"
+    },
+    "pageSerialOverLan": {
+        "accessDeniedAriaLabel": "拒绝通过局域网访问串口"
+    },
+    "pageServerPowerOperations": {
+        "forceOff": "强制关机",
+        "forceOffInfo": "立即关闭设备（非正常关机）",
+        "forceRestart": "强制重启",
+        "forceRestartInfo": "立即执行非正常关机并重新启动设备",
+        "gracefulRestart": "正常重启",
+        "gracefulRestartInfo": "正常关闭并重新启动设备",
+        "gracefulShutdown": "正常关机",
+        "gracefulShutdownInfo": "正常关闭系统并切断电源"
+    },
+    "pageSessions": {
+        "action": {
+            "disconnect": "断开连接"
+        },
+        "table": {
+            "context": "上下文"
+        }
+    },
+    "pageSnmpAlerts": {
+        "addDestination": "添加目标",
+        "deleteDestination": "删除目标 | 删除目标",
+        "modal": {
+            "addSnmpDestinationTitle": "添加 SNMP 告警目标",
+            "batchDeleteConfirmMessage": "确定要删除此 SNMP 告警目标吗？此操作无法撤销。 | 确定要删除 {count} 个 SNMP 告警目标吗？此操作无法撤销。",
+            "deleteConfirmMessage": "确定要删除此 SNMP 告警目标吗？此操作无法撤销。",
+            "deleteSnmpDestinationTitle": "删除 SNMP 告警目标 | 删除 SNMP 告警目标",
+            "ipaddress": "IP 地址",
+            "port": "端口"
+        },
+        "pageDescription": "设置简单网络管理协议（SNMP）Trap 的 IP 地址和端口。",
+        "table": {
+            "ipaddress": "IP 地址",
+            "port": "端口"
+        },
+        "toast": {
+            "errorAddDestination": "添加 SNMP 告警目标时出错",
+            "errorBatchDelete": "删除 SNMP 告警目标时出错。 | 删除多个 SNMP 告警目标时出错。",
+            "errorDeleteDestination": "删除 SNMP 告警目标时出错。",
+            "errorDestinationAlreadyExists": "SNMP 告警目标已存在。",
+            "errorLoadSnmpDetails": "加载 SNMP 告警详细信息时出错。",
+            "successAddDestination": "已成功添加 SNMP 告警目标。",
+            "successBatchDelete": "已成功删除 SNMP 告警目标。 | 已成功删除 {count} 个 SNMP 告警目标。",
+            "successDeleteDestination": "已成功删除 SNMP 告警目标。"
+        }
+    },
+    "pageUserManagement": {
+        "disableUser": "禁用用户 | 禁用用户",
+        "modal": {
+            "batchDisableConfirmMessage": "确定要禁用 {count} 个用户吗？ | 确定要禁用 {count} 个用户吗？",
+            "passwordChangeAlert": "退出登录确认",
+            "passwordChangeConfirmMessage": "确定要更改当前登录用户“{user}”的密码吗？该用户将退出登录，必须使用新密码重新登录。"
+        },
+        "toast": {
+            "rootCannotBeSelected": "批量操作不能包含 root 用户。"
+        }
+    },
+    "pageVirtualMedia": {
+        "activeExternalSession": "已在另一个会话中启用"
+    }
+}
