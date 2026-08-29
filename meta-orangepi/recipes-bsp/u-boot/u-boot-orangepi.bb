@@ -10,6 +10,7 @@ SRC_URI = " \
     file://0001-pylibfdt-use-setuptools-on-modern-python.patch \
     file://0002-pylibfdt-use-portable-swig-appendoutput.patch \
     file://0003-binman-use-standard-library-python-apis.patch \
+    file://0004-orangepi-zero2-ignore-broken-card-detect.patch \
     file://fw_env.config \
     file://fw-env-mounts.conf \
     "
@@ -51,6 +52,8 @@ do_configure() {
     ln -sfn ${S}/arch/arm/include/asm/arch-sunxi ${B}/include/asm/arch
     ln -sfn arch-sunxi ${S}/arch/arm/include/asm/arch
     oe_runmake -C ${S} O=${B} ARCH=${UBOOT_ARCH} ${UBOOT_MACHINE}
+    grep -qx 'CONFIG_MMC0_CD_PIN=""' ${B}/.config || \
+        bbfatal "Orange Pi Zero 2 SPL must not depend on the unreliable PF6 card-detect signal"
 }
 
 do_compile() {

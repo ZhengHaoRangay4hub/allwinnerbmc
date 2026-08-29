@@ -1,0 +1,37 @@
+From 9f3f3df741254f57322f4e6ae1accaf1e823d927 Mon Sep 17 00:00:00 2001
+From: ZhengHaoRangay4hub <ZhengHaoRangay4hub@users.noreply.github.com>
+Date: Sat, 29 Aug 2026 14:40:00 +0800
+Subject: [PATCH] orangepi-zero2: ignore unreliable TF card-detect signal
+
+Upstream-Status: Inappropriate [board-specific card-detect workaround]
+
+The H616 BROM can load SPL from the TF card even on boards where the PF6
+card-detect signal is not asserted.  The legacy sunxi MMC driver then
+checks PF6, reports "MMC: no card present", and stops with -ENOMEDIUM
+before it can load U-Boot proper from the same card.
+
+Leave the MMC0 card-detect pin empty so the legacy driver attempts card
+initialisation directly.  This matches the polling behaviour used when no
+card-detect GPIO is configured and keeps the data and clock wiring
+unchanged.
+
+Signed-off-by: ZhengHaoRangay4hub <ZhengHaoRangay4hub@users.noreply.github.com>
+---
+ configs/orangepi_zero2_defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configs/orangepi_zero2_defconfig b/configs/orangepi_zero2_defconfig
+index bfe1837..427c7ec 100644
+--- a/configs/orangepi_zero2_defconfig
++++ b/configs/orangepi_zero2_defconfig
+@@ -7,7 +7,7 @@ CONFIG_DRAM_SUN50I_H616_READ_CALIBRATION=y
+ CONFIG_DRAM_SUN50I_H616_READ_TRAINING=y
+ CONFIG_DRAM_SUN50I_H616_WRITE_TRAINING=y
+ CONFIG_MACH_SUN50I_H616=y
+-CONFIG_MMC0_CD_PIN="PF6"
++CONFIG_MMC0_CD_PIN=""
+ CONFIG_R_I2C_ENABLE=y
+ # CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+ CONFIG_SPL_I2C=y
+-- 
+2.51.0
