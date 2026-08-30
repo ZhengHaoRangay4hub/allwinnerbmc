@@ -188,26 +188,35 @@ GitHub token 放入本仓库。
 
 ## Released TF-card image / 已发布 TF 卡镜像
 
-The first complete OpenBMC TF-card image is published in the
-[`openbmc-orangepi-zero2-20260829`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260829)
-release. It was built by
-[GitHub Actions run 17](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33222879648)
-from commit `dd9b3362`.
+The latest image is the
+[`openbmc-orangepi-zero2-20260830-kvm-zhcn`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260830-kvm-zhcn)
+MS2130 KVM and Simplified Chinese fix. It was built by
+[GitHub Actions run 25](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33302795787)
+from commit `545e02f6`.
 
-首个完整 OpenBMC TF 卡镜像已发布到
-[`openbmc-orangepi-zero2-20260829`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260829)
-Release。该镜像由
-[GitHub Actions 第 17 轮](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33222879648)
-基于提交 `dd9b3362` 构建。
+最新镜像为
+[`openbmc-orangepi-zero2-20260830-kvm-zhcn`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260830-kvm-zhcn)
+MS2130 KVM 与简体中文修复版。该镜像由
+[GitHub Actions 第 25 轮](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33302795787)
+基于提交 `545e02f6` 构建。
 
 - Image / 镜像：
-  [`obmc-phosphor-image-orangepi-zero2-20260829002057.wic`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260829/obmc-phosphor-image-orangepi-zero2-20260829002057.wic)
-- Size / 大小：`324259840` bytes（约 309.2 MiB）
-- SHA-256：`6e64a4fbbb5e672726482a69480c8b7305ea134c7557e49dbb293cd0b58a6aa8`
+  [`obmc-phosphor-image-orangepi-zero2-20260830090358.wic`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260830-kvm-zhcn/obmc-phosphor-image-orangepi-zero2-20260830090358.wic)
+- Size / 大小：`336692224` bytes（约 321.1 MiB）
+- SHA-256：`64c1a85bbdcddeb49d27767e88f982977459a61d543ccde459a0e4497b73b74b`
 - Checksum file / 校验文件：
-  [`SHA256SUMS`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260829/SHA256SUMS)
+  [`SHA256SUMS`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260830-kvm-zhcn/SHA256SUMS)
 - Verification report / 校验报告：
-  [`obmc-phosphor-image-orangepi-zero2-20260829002057.wic.verification.json`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260829/obmc-phosphor-image-orangepi-zero2-20260829002057.wic.verification.json)
+  [`obmc-phosphor-image-orangepi-zero2-20260830090358.wic.verification.json`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260830-kvm-zhcn/obmc-phosphor-image-orangepi-zero2-20260830090358.wic.verification.json)
+
+This release fixes the H616 `obmc-ikvm` startup failure, connects MS2130 MJPG
+capture to the existing WebUI KVM path, uses the V4L2-negotiated resolution
+instead of forcing 1080p, and merges the `zh-CN` WebUI locale. The current H616
+integration is video-only; remote keyboard and mouse injection are not enabled.
+
+本版本修复 H616 上 `obmc-ikvm` 启动失败的问题，将 MS2130 MJPG 视频接入现有
+WebUI KVM 通道，按 V4L2 实际协商结果自动使用分辨率而不再强制 1080p，并合并
+`zh-CN` 中文语言包。当前 H616 适配为纯视频模式，尚未启用远程键盘和鼠标注入。
 
 This is one directly flashable whole-card image for both the 512 MB and 1 GB
 Orange Pi Zero 2 variants. Linux, the device tree, U-Boot, BL31, the boot
@@ -223,9 +232,14 @@ SHA-256 也与发布清单相符。
 Before writing the image, verify `SHA256SUMS` and carefully confirm the target
 device. Imaging tools such as balenaEtcher can write the `.wic` file directly;
 advanced users may use `dd` against the entire card device, not a partition.
-Selecting the wrong device destroys its contents. Physical boot testing on
-both RAM variants has not yet been performed.
+Selecting the wrong device destroys its contents. CI and an independent macOS
+recheck produced identical verification reports. The KVM binary, service and
+Chinese WebUI bundle were hot-deployed and validated on a running 512 MB board;
+the complete new image has not yet been reflashed and boot-tested on both RAM
+variants.
 
 烧录前请先核对 `SHA256SUMS`，并仔细确认目标设备。balenaEtcher 等镜像工具可以
 直接写入 `.wic`；使用 `dd` 时必须选择整张 TF 卡设备而不是某个分区。选错设备会
-覆盖其中的数据。目前尚未在两种内存版本的实板上完成启动测试。
+覆盖其中的数据。CI 与 macOS 独立复验报告完全一致；KVM 二进制、服务和中文
+WebUI 包已热部署并在运行中的 512 MB 实板验证。尚未将这份完整新镜像重新烧录并
+在两种内存版本上完成启动测试。
