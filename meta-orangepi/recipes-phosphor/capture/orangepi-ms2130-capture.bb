@@ -12,7 +12,7 @@ S = "${UNPACKDIR}"
 inherit systemd
 
 SYSTEMD_SERVICE:${PN} = "ms2130-capture.service"
-SYSTEMD_AUTO_ENABLE = "enable"
+SYSTEMD_AUTO_ENABLE = "disable"
 
 do_compile() {
     ${CC} ${CFLAGS} ${LDFLAGS} -std=c11 -D_FILE_OFFSET_BITS=64 \
@@ -25,4 +25,4 @@ do_install() {
         ${D}${systemd_system_unitdir}/ms2130-capture.service
 }
 
-RDEPENDS:${PN} = "v4l-utils"
+RDEPENDS:${PN} = "kmod v4l-utils"

@@ -6,7 +6,8 @@ Wants=systemd-udev-settle.service
 [Service]
 Type=simple
 RuntimeDirectory=ms2130
-ExecStart=/usr/bin/ms2130-capture --device /dev/video0 --output /run/ms2130/latest.mjpg --width 1920 --height 1080 --fps 30
+ExecStartPre=/sbin/modprobe uvcvideo
+ExecStart=/usr/bin/ms2130-capture --device /dev/video0 --output /run/ms2130/latest.mjpg --fps 30
 Restart=always
 RestartSec=2
 

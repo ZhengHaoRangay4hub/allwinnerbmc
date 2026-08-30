@@ -55,6 +55,19 @@ static int publish_frame(const char *path, const void *data, size_t length) {
     return 0;
 }
 
+static size_t complete_jpeg_length(const void *data, size_t length) {
+    const unsigned char *jpeg = data;
+    if (length < 4 || jpeg[0] != 0xff || jpeg[1] != 0xd8)
+        return 0;
+
+    /* UVC devices may pad a payload after the JPEG EOI marker. */
+    for (size_t i = length; i > 1; --i) {
+        if (jpeg[i - 2] == 0xff && jpeg[i - 1] == 0xd9)
+            return i;
+    }
+    return 0;
+}
+
 static int capture_once(const char *device, const char *output,
                         unsigned width, unsigned height, unsigned fps) {
     int fd = open(device, O_RDWR | O_NONBLOCK | O_CLOEXEC);
@@ -71,15 +84,24 @@ static int capture_once(const char *device, const char *output,
     struct v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width = width;
-    fmt.fmt.pix.height = height;
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
-    fmt.fmt.pix.field = V4L2_FIELD_ANY;
-    if (xioctl(fd, VIDIOC_S_FMT, &fmt) < 0 ||
-        fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_MJPEG) {
-        fprintf(stderr, "MS2130: device does not provide MJPEG\n");
+    if (xioctl(fd, VIDIOC_G_FMT, &fmt) < 0) {
         close(fd); return -1;
     }
+
+    /* A zero width/height means use the format currently negotiated by UVC. */
+    if (width) fmt.fmt.pix.width = width;
+    if (height) fmt.fmt.pix.height = height;
+    if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_MJPEG || width || height) {
+        fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
+        fmt.fmt.pix.field = V4L2_FIELD_ANY;
+        if (xioctl(fd, VIDIOC_S_FMT, &fmt) < 0 ||
+            fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_MJPEG) {
+            fprintf(stderr, "MS2130: device does not provide MJPEG\n");
+            close(fd); return -1;
+        }
+    }
+    fprintf(stderr, "MS2130: negotiated %ux%u MJPEG\n",
+            fmt.fmt.pix.width, fmt.fmt.pix.height);
 
     struct v4l2_streamparm parm;
     memset(&parm, 0, sizeof(parm));
@@ -113,6 +135,7 @@ static int capture_once(const char *device, const char *output,
 
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (xioctl(fd, VIDIOC_STREAMON, &type) < 0) goto fail;
+    unsigned warmup = fps ? fps : 30;
     while (!stop) {
         fd_set fds; FD_ZERO(&fds); FD_SET(fd, &fds);
         struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
@@ -126,8 +149,19 @@ static int capture_once(const char *device, const char *output,
             if (errno == EAGAIN) continue;
             break;
         }
-        if (buf.index < count && buf.bytesused)
-            (void)publish_frame(output, buffers[buf.index].data, buf.bytesused);
+        if (buf.index < count && buf.bytesused) {
+            if (warmup) {
+                --warmup;
+            } else {
+                size_t jpeg_length = complete_jpeg_length(
+                    buffers[buf.index].data, buf.bytesused);
+                if (jpeg_length)
+                    (void)publish_frame(output, buffers[buf.index].data,
+                                        jpeg_length);
+                else
+                    fprintf(stderr, "MS2130: discarded incomplete JPEG frame\n");
+            }
+        }
         if (xioctl(fd, VIDIOC_QBUF, &buf) < 0) break;
     }
     (void)xioctl(fd, VIDIOC_STREAMOFF, &type);
@@ -140,7 +174,7 @@ fail:
 
 int main(int argc, char **argv) {
     const char *device = "/dev/video0", *output = "/run/ms2130/latest.mjpg";
-    unsigned width = 1920, height = 1080, fps = 30;
+    unsigned width = 0, height = 0, fps = 30;
     static const struct option opts[] = {
         {"device", required_argument, NULL, 'd'}, {"output", required_argument, NULL, 'o'},
         {"width", required_argument, NULL, 'w'}, {"height", required_argument, NULL, 'h'},

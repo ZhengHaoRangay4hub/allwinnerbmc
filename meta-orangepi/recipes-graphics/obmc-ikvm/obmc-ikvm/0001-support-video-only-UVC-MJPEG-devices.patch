@@ -1,0 +1,246 @@
+From: OpenBMC Orange Pi Zero 2 port <openbmc@orangepi.invalid>
+Subject: [PATCH] support video-only UVC MJPEG devices
+
+Allow obmc-ikvm to run without a USB gadget when no keyboard or pointer
+device was requested. Accept the MJPG FourCC exposed by common UVC capture
+devices and send it through the existing Tight JPEG path.
+
+Use the UVC-negotiated width, height, and pixel format instead of assuming
+the capture device implements the SoC DV timing ioctls. Poll G_FMT while
+running so a negotiated format change reallocates the capture and VNC
+framebuffers without hard-coding a resolution.
+
+Upstream-Status: Inappropriate [board-specific video-only configuration]
+Signed-off-by: OpenBMC Orange Pi Zero 2 port <openbmc@orangepi.invalid>
+---
+ ikvm_input.cpp  |  15 ++++++++
+ ikvm_server.cpp |   1 +
+ ikvm_video.cpp  | 104 +++++++++++++++++++++++++++++++++++++++++++-------------
+ ikvm_video.hpp  |   2 ++
+ 4 files changed, 98 insertions(+), 24 deletions(-)
+
+diff --git a/ikvm_input.cpp b/ikvm_input.cpp
+index bead052..4a70ca5 100644
+--- a/ikvm_input.cpp
++++ b/ikvm_input.cpp
+@@ -27,6 +27,11 @@ Input::Input(const std::string& kbdPath, const std::string& ptrPath,
+     keyboardFd(-1), pointerFd(-1), keyboardReport{0}, pointerReport{0},
+     keyboardPath(kbdPath), pointerPath(ptrPath), udcName(udc)
+ {
++    if (keyboardPath.empty() && pointerPath.empty())
++    {
++        return;
++    }
++
+     hidUdcStream.exceptions(std::ofstream::failbit | std::ofstream::badbit);
+     hidUdcStream.open(hidUdcPath, std::ios::out | std::ios::app);
+ }
+@@ -38,6 +43,11 @@ Input::~Input()
+ 
+ void Input::connect()
+ {
++    if (!hidUdcStream.is_open())
++    {
++        return;
++    }
++
+     try
+     {
+         if (udcName.empty())
+@@ -132,6 +142,11 @@ void Input::disconnect()
+         pointerFd = -1;
+     }
+ 
++    if (!hidUdcStream.is_open())
++    {
++        return;
++    }
++
+     try
+     {
+         hidUdcStream << "" << std::endl;
+diff --git a/ikvm_server.cpp b/ikvm_server.cpp
+index abda182..a021635 100644
+--- a/ikvm_server.cpp
++++ b/ikvm_server.cpp
+@@ -229,6 +229,7 @@ void Server::sendFrame()
+                 break;
+ 
+             case V4L2_PIX_FMT_JPEG:
++            case V4L2_PIX_FMT_MJPEG:
+                 fu->type = rfbFramebufferUpdate;
+                 cl->ublen = sz_rfbFramebufferUpdateMsg;
+                 rfbSendUpdateBuf(cl);
+diff --git a/ikvm_video.cpp b/ikvm_video.cpp
+index d7db987..a3cfbe7 100644
+--- a/ikvm_video.cpp
++++ b/ikvm_video.cpp
+@@ -31,9 +31,9 @@ using namespace sdbusplus::xyz::openbmc_project::Common::File::Error;
+ using namespace sdbusplus::xyz::openbmc_project::Common::Device::Error;
+ 
+ Video::Video(const std::string& p, Input& input, int fr, int sub) :
+-    resizeAfterOpen(false), timingsError(false), fd(-1), frameRate(fr),
+-    lastFrameIndex(-1), height(600), width(800), subSampling(sub), input(input),
+-    path(p)
++    resizeAfterOpen(false), dvTimingsSupported(true), timingsError(false),
++    fd(-1), frameRate(fr), lastFrameIndex(-1), height(600), width(800),
++    subSampling(sub), input(input), path(p)
+ {}
+ 
+ Video::~Video()
+@@ -72,15 +72,28 @@ void Video::probePixelFormat()
+     }
+ 
+     pixelformat = fmt.fmt.pix.pixelformat;
+-
+     if (pixelformat != V4L2_PIX_FMT_RGB24 && pixelformat != V4L2_PIX_FMT_JPEG &&
++        pixelformat != V4L2_PIX_FMT_MJPEG &&
+         pixelformat != V4L2_PIX_FMT_RGB565 &&
+         pixelformat != V4L2_PIX_FMT_HEXTILE)
+     {
+-        lg2::error("Pixel Format not supported {PIXELFORMAT}", "PIXELFORMAT",
+-                   pixelformat);
++        fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
++        fmt.fmt.pix.field = V4L2_FIELD_ANY;
++        rc = ioctl(fd, VIDIOC_S_FMT, &fmt);
++        if (rc < 0 || fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_MJPEG)
++        {
++            lg2::error("Pixel Format not supported {PIXELFORMAT}",
++                       "PIXELFORMAT", pixelformat);
++        }
++        else
++        {
++            pixelformat = fmt.fmt.pix.pixelformat;
++        }
+     }
+ 
++    width = fmt.fmt.pix.width;
++    height = fmt.fmt.pix.height;
++
+     if (pixelformat == V4L2_PIX_FMT_RGB565 ||
+         pixelformat == V4L2_PIX_FMT_HEXTILE)
+     {
+@@ -191,6 +204,30 @@ bool Video::needsResize()
+     int rc;
+     v4l2_dv_timings timings;
+ 
++    auto queryUvcFormat = [this]() {
++        v4l2_format fmt;
++        memset(&fmt, 0, sizeof(fmt));
++        fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
++        if (ioctl(fd, VIDIOC_G_FMT, &fmt) < 0)
++        {
++            lg2::warning("Failed to query UVC format {ERROR}", "ERROR",
++                         strerror(errno));
++            return false;
++        }
++
++        if (fmt.fmt.pix.width == width && fmt.fmt.pix.height == height &&
++            fmt.fmt.pix.pixelformat == pixelformat)
++        {
++            return false;
++        }
++
++        width = fmt.fmt.pix.width;
++        height = fmt.fmt.pix.height;
++        pixelformat = fmt.fmt.pix.pixelformat;
++        lastFrameIndex = -1;
++        return true;
++    };
++
+     if (fd < 0)
+     {
+         return false;
+@@ -201,10 +238,23 @@ bool Video::needsResize()
+         return true;
+     }
+ 
++    if (!dvTimingsSupported)
++    {
++        return queryUvcFormat();
++    }
++
+     memset(&timings, 0, sizeof(v4l2_dv_timings));
+     rc = ioctl(fd, VIDIOC_QUERY_DV_TIMINGS, &timings);
+     if (rc < 0)
+     {
++        if (errno == ENOTTY || errno == EINVAL)
++        {
++            // USB UVC capture devices report their negotiated output geometry
++            // through G_FMT rather than the SoC DV timings ioctls.
++            dvTimingsSupported = false;
++            return queryUvcFormat();
++        }
++
+         if (!timingsError)
+         {
+             lg2::error("Failed to query timings {ERROR}", "ERROR",
+@@ -314,28 +364,34 @@ void Video::resize()
+                     CALLOUT_DEVICE_PATH(path.c_str()));
+         }
+ 
+-        memset(&timings, 0, sizeof(v4l2_dv_timings));
+-        rc = ioctl(fd, VIDIOC_QUERY_DV_TIMINGS, &timings);
+-        if (rc < 0)
++        if (dvTimingsSupported)
+         {
+-            lg2::error("Failed to query timings, restart {ERROR}", "ERROR",
+-                       strerror(errno));
+-            restart();
+-            return;
+-        }
++            memset(&timings, 0, sizeof(v4l2_dv_timings));
++            rc = ioctl(fd, VIDIOC_QUERY_DV_TIMINGS, &timings);
++            if (rc < 0)
++            {
++                lg2::error("Failed to query timings, restart {ERROR}",
++                           "ERROR", strerror(errno));
++                restart();
++                return;
++            }
+ 
+-        rc = ioctl(fd, VIDIOC_S_DV_TIMINGS, &timings);
+-        if (rc < 0)
+-        {
+-            lg2::error("Failed to set timings {ERROR}", "ERROR",
+-                       strerror(errno));
+-            elog<ReadFailure>(
+-                xyz::openbmc_project::Common::Device::ReadFailure::
+-                    CALLOUT_ERRNO(errno),
+-                xyz::openbmc_project::Common::Device::ReadFailure::
+-                    CALLOUT_DEVICE_PATH(path.c_str()));
++            rc = ioctl(fd, VIDIOC_S_DV_TIMINGS, &timings);
++            if (rc < 0)
++            {
++                lg2::error("Failed to set timings {ERROR}", "ERROR",
++                           strerror(errno));
++                elog<ReadFailure>(
++                    xyz::openbmc_project::Common::Device::ReadFailure::
++                        CALLOUT_ERRNO(errno),
++                    xyz::openbmc_project::Common::Device::ReadFailure::
++                        CALLOUT_DEVICE_PATH(path.c_str()));
++            }
+         }
++    }
+ 
++    if (needsResizeCall)
++    {
+         buffers.clear();
+     }
+ 
+diff --git a/ikvm_video.hpp b/ikvm_video.hpp
+index d5f2859..7ccfa6c 100644
+--- a/ikvm_video.hpp
++++ b/ikvm_video.hpp
+@@ -158,6 +158,8 @@ class Video
+      *        the open operation
+      */
+     bool resizeAfterOpen;
++    /* @brief Whether the capture engine implements DV timing ioctls */
++    bool dvTimingsSupported;
+     /* @brief Indicates whether or not timings query was last successful */
+     bool timingsError;
+     /* @brief File descriptor for the V4L2 video device */
+-- 
+2.39.5
+

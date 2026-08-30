@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenBMC ipKVM daemon for MS2130 UVC capture
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+Conflicts=ms2130-capture.service
+
+[Service]
+Restart=always
+RestartSec=2
+ExecStartPre=/sbin/modprobe uvcvideo
+ExecStart=/usr/bin/obmc-ikvm -v /dev/video0 -f 30 -c
+
+[Install]
+WantedBy=multi-user.target
