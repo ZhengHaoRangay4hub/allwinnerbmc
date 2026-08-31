@@ -1,9 +1,10 @@
 From: OpenBMC Orange Pi Zero 2 integration
-Subject: [PATCH] ikvm: add CH32V307 HID bridge with CH340 auto discovery
+Subject: [PATCH] ikvm: add CH32V307 HID bridge with WCH-LinkE discovery
 
 Route KVM keyboard and absolute-pointer reports to a CH32V307 over a
-framed 921600-baud serial protocol. Support automatic CH340/CH341 discovery
-by USB VID/PID, periodic heartbeats, hot-unplug recovery, and reconnects.
+framed 921600-baud serial protocol. Support automatic WCH-LinkE CDC ACM
+discovery by USB VID/PID, periodic heartbeats, hot-unplug recovery, and
+reconnects.
 
 Upstream-Status: Inappropriate [board-specific hardware integration]
 
@@ -42,7 +43,7 @@ index 11d19f0..cc99409 100644
      fprintf(stderr, "-p device              HID mouse gadget device\n");
 +    fprintf(stderr,
 +            "-m, --mcu-device device External HID MCU serial device; use "
-+            "'auto' for CH340 discovery\n");
++            "'auto' for WCH-LinkE discovery\n");
      fprintf(stderr,
              "-u udc name            UDC that HID gadget will connect to\n");
      fprintf(stderr, "-v device              V4L2 device\n");
@@ -94,16 +95,15 @@ index 4a70ca5..06120cb 100644
  
  #include <phosphor-logging/elog-errors.hpp>
  #include <phosphor-logging/elog.hpp>
-@@ -22,12 +31,91 @@ namespace ikvm
+@@ -22,12 +31,84 @@ namespace ikvm
  using namespace phosphor::logging;
  using namespace sdbusplus::xyz::openbmc_project::Common::File::Error;
  
 +namespace
 +{
-+constexpr const char* ch340SysfsTtyPath = "/sys/class/tty";
-+constexpr const char* ch340VendorId = "1a86";
-+constexpr std::array<const char*, 3> ch340ProductIds = {"5523", "7522",
-+                                                        "7523"};
++constexpr const char* wchLinkSysfsTtyPath = "/sys/class/tty";
++constexpr const char* wchVendorId = "1a86";
++constexpr const char* wchLinkProductId = "8010";
 +
 +std::string readSysfsValue(const fs::path& path)
 +{
@@ -123,34 +123,28 @@ index 4a70ca5..06120cb 100644
 +    return value;
 +}
 +
-+bool isCh340UsbDevice(const fs::path& path)
++bool isWchLinkUsbDevice(const fs::path& path)
 +{
-+    if (readSysfsValue(path / "idVendor") != ch340VendorId)
-+    {
-+        return false;
-+    }
-+
-+    const std::string product = readSysfsValue(path / "idProduct");
-+    return std::any_of(ch340ProductIds.begin(), ch340ProductIds.end(),
-+                       [&product](const char* id) { return product == id; });
++    return readSysfsValue(path / "idVendor") == wchVendorId &&
++           readSysfsValue(path / "idProduct") == wchLinkProductId;
 +}
 +
-+std::string findCh340Device()
++std::string findWchLinkDevice()
 +{
 +    std::error_code error;
 +    std::vector<std::string> matches;
-+    fs::directory_iterator iterator(ch340SysfsTtyPath, error);
++    fs::directory_iterator iterator(wchLinkSysfsTtyPath, error);
 +    const fs::directory_iterator end;
 +
 +    while (!error && iterator != end)
 +    {
 +        const std::string ttyName = iterator->path().filename().string();
-+        if (ttyName.rfind("ttyUSB", 0) == 0)
++        if (ttyName.rfind("ttyACM", 0) == 0)
 +        {
 +            fs::path current = fs::canonical(iterator->path(), error);
 +            while (!error && !current.empty())
 +            {
-+                if (isCh340UsbDevice(current))
++                if (isWchLinkUsbDevice(current))
 +                {
 +                    matches.emplace_back("/dev/" + ttyName);
 +                    break;
@@ -303,7 +297,7 @@ index 4a70ca5..06120cb 100644
 +bool Input::openMcu()
 +{
 +    termios settings{};
-+    const std::string device = (mcuPath == "auto") ? findCh340Device()
++    const std::string device = (mcuPath == "auto") ? findWchLinkDevice()
 +                                                    : mcuPath;
 +
 +    if (device.empty())
@@ -603,4 +597,3 @@ index a62aa43..23f7df8 100644
  TEST_F(ArgsTest, ParseCalcCRCFlag)
  {
      std::vector<std::string> args = {"obmc-ikvm", "-c"};
-

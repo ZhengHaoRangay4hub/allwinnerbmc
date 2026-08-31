@@ -1,0 +1,135 @@
+From: OpenBMC Orange Pi Zero 2 integration
+Subject: [PATCH] ikvm: enforce endpoint-exact absolute pointer mapping
+
+Keep the browser, VNC framebuffer and CH32V307 USB HID pointer in one
+coordinate space. Clamp browser coordinates to the negotiated video frame,
+map both endpoints exactly to 0 and 0x7fff, use 64-bit arithmetic, and round
+intermediate positions instead of truncating them.
+
+This avoids stale coordinates at the right and bottom borders and keeps the
+remote pointer aligned when noVNC scales a non-native-size KVM canvas.
+
+Upstream-Status: Inappropriate [board-specific external HID integration]
+
+diff --git a/ikvm_hid.hpp b/ikvm_hid.hpp
+new file mode 100644
+index 0000000..44b7f7a
+--- /dev/null
++++ b/ikvm_hid.hpp
+@@ -0,0 +1,33 @@
++#pragma once
++
++#include <algorithm>
++#include <cstdint>
++
++namespace ikvm
++{
++
++constexpr uint16_t hidAbsoluteMaximum = 0x7fff;
++
++/*
++ * Convert a coordinate in the negotiated VNC framebuffer to the logical
++ * range declared by the CH32V307 absolute-pointer HID descriptor.
++ */
++constexpr uint16_t scaleAbsoluteCoordinate(int coordinate, uint32_t extent)
++{
++    if (extent <= 1)
++    {
++        return 0;
++    }
++
++    const int64_t sourceMaximum = static_cast<int64_t>(extent) - 1;
++    const int64_t clamped =
++        std::clamp<int64_t>(coordinate, 0, sourceMaximum);
++    const uint64_t numerator =
++        static_cast<uint64_t>(clamped) * hidAbsoluteMaximum +
++        static_cast<uint64_t>(sourceMaximum) / 2;
++
++    return static_cast<uint16_t>(numerator /
++                                 static_cast<uint64_t>(sourceMaximum));
++}
++
++} // namespace ikvm
+diff --git a/ikvm_input.cpp b/ikvm_input.cpp
+index 06120cb..c39c0f5 100644
+--- a/ikvm_input.cpp
++++ b/ikvm_input.cpp
+@@ -1,5 +1,6 @@
+ #include "ikvm_input.hpp"
+ 
++#include "ikvm_hid.hpp"
+ #include "ikvm_server.hpp"
+ #include "keymap.hpp"
+ 
+@@ -375,24 +376,11 @@ void Input::pointerEvent(int buttonMask, int x, int y, rfbClientPtr cl)
+         input->pointerReport[5] = 0;
+     }
+ 
+-    if (x >= 0 && (unsigned int)x < video.getWidth())
+-    {
+-        uint16_t xx = (video.getWidth() > 1)
+-                          ? (uint16_t)(x * SHRT_MAX / (video.getWidth() - 1))
+-                          : 0;
+-
+-        memcpy(&input->pointerReport[1], &xx, sizeof(xx));
+-    }
+-
+-    if (y >= 0 && (unsigned int)y < video.getHeight())
+-    {
+-        uint16_t yy = (video.getHeight() > 1)
+-                          ? (uint16_t)(y * SHRT_MAX / (video.getHeight() - 1))
+-                          : 0;
+-
+-        memcpy(&input->pointerReport[3], &yy, sizeof(yy));
+-    }
++    const uint16_t xx = scaleAbsoluteCoordinate(x, video.getWidth());
++    const uint16_t yy = scaleAbsoluteCoordinate(y, video.getHeight());
++    memcpy(&input->pointerReport[1], &xx, sizeof(xx));
++    memcpy(&input->pointerReport[3], &yy, sizeof(yy));
+ 
+     rfbDefaultPtrAddEvent(buttonMask, x, y, cl);
+     input->writePointer(input->pointerReport);
+ }
+diff --git a/test/ikvm_input_test.cpp b/test/ikvm_input_test.cpp
+index ee451cf..093070c 100644
+--- a/test/ikvm_input_test.cpp
++++ b/test/ikvm_input_test.cpp
+@@ -1,3 +1,4 @@
++#include "ikvm_hid.hpp"
+ #include "keymap.hpp"
+ #include "scancodes.hpp"
+ 
+@@ -117,4 +118,33 @@ TEST_F(KeymapTest, ModifierNonModifierKeysReturnZero)
+     EXPECT_EQ(mod(XK_Menu), 0);
+ }
+ 
++TEST(HidAbsoluteCoordinateTest, MapsBothEndpointsExactly)
++{
++    EXPECT_EQ(scaleAbsoluteCoordinate(0, 1920), 0);
++    EXPECT_EQ(scaleAbsoluteCoordinate(1919, 1920), hidAbsoluteMaximum);
++    EXPECT_EQ(scaleAbsoluteCoordinate(0, 2160), 0);
++    EXPECT_EQ(scaleAbsoluteCoordinate(2159, 2160), hidAbsoluteMaximum);
++}
++
++TEST(HidAbsoluteCoordinateTest, ClampsCoordinatesOutsideTheFramebuffer)
++{
++    EXPECT_EQ(scaleAbsoluteCoordinate(-1, 1920), 0);
++    EXPECT_EQ(scaleAbsoluteCoordinate(1920, 1920), hidAbsoluteMaximum);
++    EXPECT_EQ(scaleAbsoluteCoordinate(99999, 3840), hidAbsoluteMaximum);
++}
++
++TEST(HidAbsoluteCoordinateTest, RoundsTheFramebufferMidpoint)
++{
++    EXPECT_EQ(scaleAbsoluteCoordinate(50, 101), 16384);
++    EXPECT_EQ(scaleAbsoluteCoordinate(25, 101), 8192);
++    EXPECT_EQ(scaleAbsoluteCoordinate(75, 101), 24575);
++}
++
++TEST(HidAbsoluteCoordinateTest, HandlesDegenerateFrameDimensions)
++{
++    EXPECT_EQ(scaleAbsoluteCoordinate(0, 0), 0);
++    EXPECT_EQ(scaleAbsoluteCoordinate(0, 1), 0);
++    EXPECT_EQ(scaleAbsoluteCoordinate(1, 1), 0);
++}
++
+ } // namespace ikvm

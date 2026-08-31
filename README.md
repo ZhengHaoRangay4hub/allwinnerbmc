@@ -17,8 +17,9 @@ GitHub Actions 构建输入。上游 OpenBMC 源码位于 `openbmc/`，板级定
 - GPIO control: packaged through the OpenBMC service layer
 - MS2130 USB capture: packaged as a systemd service and exposed through the
   board layer
-- USB keyboard/mouse control: CH32V307 composite HID firmware with an
-  automatically discovered CH340 USB-to-UART link on the BMC side
+- USB keyboard/mouse control: CH32V307 composite HID firmware controlled
+  through the WCH-LinkE CDC serial interface (`1a86:8010`), automatically
+  discovered on the BMC side
 
 板卡信息：
 
@@ -27,8 +28,37 @@ GitHub Actions 构建输入。上游 OpenBMC 源码位于 `openbmc/`，板级定
 - 内存版本：512 MB 和 1 GB（机器配置使用通用硬件描述，运行时识别内存容量）
 - GPIO 控制：通过 OpenBMC 服务层打包
 - MS2130 USB 采集：打包为 systemd 服务，并由板级层提供
-- USB 键盘/鼠标控制：使用 CH32V307 复合 HID 固件，BMC 侧通过 CH340
-  USB 转串口自动发现，无需手动选择 `ttyUSB` 设备
+- USB 键盘/鼠标控制：使用 CH32V307 复合 HID 固件，通过 WCH-LinkE CDC
+  串口（`1a86:8010`）控制，BMC 侧自动发现，无需手动选择 `ttyACM` 设备
+
+## KVM absolute pointer / KVM 绝对坐标鼠标
+
+The production KVM path uses one endpoint-exact absolute coordinate system:
+
+```text
+Web browser canvas -> noVNC framebuffer coordinates -> obmc-ikvm
+                   -> 0..32767 CH32 report -> P6 absolute USB HID mouse
+```
+
+The browser scales only the visible noVNC canvas and does not resize or pan the
+remote session. noVNC converts the displayed pointer position back to the
+negotiated MS2130 framebuffer. `obmc-ikvm` then clamps each axis and maps the
+first and last framebuffer pixels exactly to `0` and `32767`, matching the
+CH32V307 HID report descriptor. The mapping is independent of browser size,
+CSS scaling, and captured resolutions up to 4K.
+
+正式 KVM 链路统一使用一套端点精确的绝对坐标：
+
+```text
+浏览器画布 -> noVNC 视频帧坐标 -> obmc-ikvm
+           -> 0..32767 CH32 报告 -> P6 绝对坐标 USB HID 鼠标
+```
+
+浏览器只缩放 noVNC 的显示画布，不调整或平移远端会话。noVNC 先把网页上的
+鼠标位置还原到 MS2130 实际协商的视频帧坐标；`obmc-ikvm` 再对坐标钳位，
+将视频帧每个轴的首末像素精确映射为 `0` 和 `32767`，与 CH32V307 的 HID
+描述符完全一致。因此浏览器窗口大小、CSS 缩放和 4K 以下采集分辨率变化不会
+改变网页鼠标与被控主机实际鼠标的位置关系。
 
 ## Source revisions / 源码版本
 

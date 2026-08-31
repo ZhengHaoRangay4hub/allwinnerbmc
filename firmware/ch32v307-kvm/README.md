@@ -9,9 +9,9 @@ The target-facing USB port enumerates two HID interfaces:
 - boot keyboard: 8-byte report;
 - absolute mouse: 6-byte report (`buttons, x_le16, y_le16, wheel`).
 
-The BMC-facing transport is USART2 at 921600 baud, 8-N-1. The default OpenBMC
-connection uses a CH340 USB-to-UART adapter so the H616 side can discover the
-bridge automatically:
+The control transport is USART1 at 921600 baud, 8-N-1. On the CH32V307V EVT
+board it is connected to the board's WCH-LinkE USB CDC port through the J2
+SWD/UART jumpers:
 
 ```text
 A5 5A | version | type | sequence | length | payload | crc16_le
@@ -24,21 +24,20 @@ second, the firmware releases all keys and mouse buttons.
 
 ## Pins
 
-- USART2 TX: PA2
-- USART2 RX: PA3
+- USART1 TX: PA9 (`TX1` on J2)
+- USART1 RX: PA10 (`RX1` on J2)
 - USBHS: the board's USBHS device connector/pins from the WCH CompositeKM
   example
 - UART levels must be 3.3 V.
 
-For the Orange Pi Zero 2 CH340 connection:
+For the on-board WCH-LinkE connection, install the two J2 UART jumpers so that:
 
-- H616 USB host -> CH340 USB
-- CH340 TX -> CH32V307 PA3 / USART2 RX
-- CH340 RX <- CH32V307 PA2 / USART2 TX
-- CH340 GND <-> CH32V307 GND
+- WCH-LinkE `RX_OUT` is connected to target `TX1` / PA9
+- WCH-LinkE `TX_OUT` is connected to target `RX1` / PA10
+- the WCH-LinkE USB port is connected to the Mac or BMC host
 
-The OpenBMC service matches the CH340/CH341 USB IDs and follows changes such as
-`/dev/ttyUSB0` becoming `/dev/ttyUSB1`; no serial-port selection is required.
+The Mac WebUI under `webui/` matches the WCH-LinkE USB VID/PID automatically;
+no serial-port selection is required.
 
 ## Build
 
@@ -56,19 +55,18 @@ Outputs are written to `build/ch32v307-kvm.{elf,hex,bin}`.
 # CH32V307 OpenBMC KVM 键鼠桥
 
 该固件把 CH32V307 作为 OpenBMC KVM 的 USB 键盘和绝对坐标鼠标。面向被控
-主机的一端枚举为键盘和鼠标两个 HID 接口；面向 BMC 的一端使用 USART2，
-参数为 921600、8-N-1。
+主机的一端枚举为键盘和鼠标两个 HID 接口；控制通道使用 USART1，参数为
+921600、8-N-1。
 
-Orange Pi Zero 2 默认通过 CH340 连接，不需要在 Web UI 或配置文件中选择
-`ttyUSB` 编号。OpenBMC 会根据 CH340/CH341 的 USB VID/PID 自动发现设备，
-设备拔插或编号变化后也会自动重连。
+CH32V307V EVT 板上的 WCH-LinkE 通过 J2 的 SWD/UART 跳线连接到 USART1。
+Mac WebUI 会根据 WCH-LinkE 的 USB VID/PID 自动发现控制串口，不需要手动
+选择 `/dev/cu.usbmodem*` 编号。
 
 ## 接线
 
-- H616 USB Host -> CH340 USB
-- CH340 TX -> CH32V307 PA3 / USART2 RX
-- CH340 RX <- CH32V307 PA2 / USART2 TX
-- CH340 GND <-> CH32V307 GND
+- J2 `RX_OUT` -> `TX1` / PA9 / USART1 TX
+- J2 `TX_OUT` -> `RX1` / PA10 / USART1 RX
+- WCH-LinkE USB -> Mac 或 BMC 控制端
 - CH32V307 USBHS Device -> 被控主机 USB
 
 串口信号必须使用 3.3 V 电平，不要把 5 V TTL 信号直接接入 CH32V307。

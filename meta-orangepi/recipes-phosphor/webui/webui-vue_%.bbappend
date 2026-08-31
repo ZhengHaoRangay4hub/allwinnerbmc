@@ -5,6 +5,7 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/${BPN}:"
 CHINESE_LOCALE_SRCREV = "c757b32cc2940f19429af1903d3d0bda9f20c150"
 SRC_URI += " \
     https://raw.githubusercontent.com/ocp-hm-openbmc-opf-ami/webui-vue/${CHINESE_LOCALE_SRCREV}/src/locales/zh-CN.json;name=zhcn;downloadfilename=zh-CN-upstream.json \
+    file://0001-kvm-use-fixed-absolute-pointer-space.patch \
     file://zh-CN-additions.json \
     file://merge-webui-locales.py \
     file://default-webui-language.py \

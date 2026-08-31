@@ -1,0 +1,36 @@
+From: OpenBMC Orange Pi Zero 2 integration
+Subject: [PATCH] Kvm: keep pointer in the captured framebuffer coordinate space
+
+The CH32V307 presents an absolute-coordinate USB HID pointer. Keep noVNC's
+framebuffer as the single pointer coordinate source: scale the rendered canvas
+without resizing the remote session, disable viewport panning, and let noVNC
+convert browser canvas coordinates back to framebuffer coordinates before it
+sends each RFB pointer event.
+
+With this contract, CSS/display scaling does not change the logical pointer
+position and obmc-ikvm can map the negotiated capture frame directly to the
+HID range 0..0x7fff.
+
+Upstream-Status: Inappropriate [board-specific external HID integration]
+
+diff --git a/src/views/Operations/Kvm/KvmConsole.vue b/src/views/Operations/Kvm/KvmConsole.vue
+index 438ee9a..f630f5e 100644
+--- a/src/views/Operations/Kvm/KvmConsole.vue
++++ b/src/views/Operations/Kvm/KvmConsole.vue
+@@ -146,8 +146,15 @@ export default {
+         { wsProtocols: [token] },
+       );
+ 
++      // Keep the negotiated video framebuffer as the one absolute coordinate
++      // space. noVNC divides canvas coordinates by its viewport scale before
++      // sending RFB pointer events, so the CH32V307 HID cursor remains aligned
++      // at every browser size and captured-video resolution.
+       this.rfb.scaleViewport = true;
+-      this.rfb.clipViewport = true;
++      this.rfb.clipViewport = false;
++      this.rfb.dragViewport = false;
++      this.rfb.resizeSession = false;
++      this.rfb.viewOnly = false;
+       const that = this;
+ 
+       this.resizeKvmWindow = throttle(() => {

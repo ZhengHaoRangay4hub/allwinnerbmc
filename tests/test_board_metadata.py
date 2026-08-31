@@ -144,13 +144,16 @@ class BoardMetadataTest(unittest.TestCase):
         self.assertIn("wcnmodem.sha256sum", firmware)
         self.assertIn("boardconfig.sha256sum", firmware)
 
-    def test_ch32v307_kvm_auto_detects_ch340_without_rebuilding_the_kernel(self):
+    def test_ch32v307_kvm_auto_detects_wch_link_and_uses_absolute_coordinates(self):
         bbappend = (
             LAYER / "recipes-graphics/obmc-ikvm/obmc-ikvm_%.bbappend"
         ).read_text()
         files = LAYER / "recipes-graphics/obmc-ikvm/obmc-ikvm"
         service = (files / "obmc-ikvm.service").read_text()
         patch = (files / "0002-add-CH32V307-serial-HID-backend.patch").read_text()
+        coordinate_patch = (
+            files / "0003-enforce-endpoint-exact-absolute-pointer.patch"
+        ).read_text()
         dtb_recipe = (
             LAYER / "recipes-bsp/boot/orangepi-fixed-kernel-dtb.bb"
         ).read_text()
@@ -160,18 +163,24 @@ class BoardMetadataTest(unittest.TestCase):
         firmware = ROOT / "firmware/ch32v307-kvm"
 
         self.assertIn("0002-add-CH32V307-serial-HID-backend.patch", bbappend)
-        self.assertIn("modprobe ch341", service)
+        self.assertIn("0003-enforce-endpoint-exact-absolute-pointer.patch", bbappend)
+        self.assertIn("modprobe cdc_acm", service)
         self.assertIn("--mcu-device auto", service)
-        self.assertIn("kernel-module-ch341", packagegroup)
+        self.assertIn("kernel-module-cdc-acm", packagegroup)
         self.assertIn("mcuKeyboardPacket = 0x01", patch)
         self.assertIn("mcuPointerPacket = 0x02", patch)
         self.assertIn("mcuHeartbeatPacket = 0x03", patch)
         self.assertIn("B921600", patch)
-        self.assertIn('ch340VendorId = "1a86"', patch)
-        for product_id in ("5523", "7522", "7523"):
-            self.assertIn(f'"{product_id}"', patch)
-        self.assertIn('ch340SysfsTtyPath = "/sys/class/tty"', patch)
-        self.assertIn('ttyName.rfind("ttyUSB", 0)', patch)
+        self.assertIn('wchVendorId = "1a86"', patch)
+        self.assertIn('wchLinkProductId = "8010"', patch)
+        self.assertIn('wchLinkSysfsTtyPath = "/sys/class/tty"', patch)
+        self.assertIn('ttyName.rfind("ttyACM", 0)', patch)
+        self.assertIn("hidAbsoluteMaximum = 0x7fff", coordinate_patch)
+        self.assertIn("scaleAbsoluteCoordinate(x, video.getWidth())", coordinate_patch)
+        self.assertIn("scaleAbsoluteCoordinate(y, video.getHeight())", coordinate_patch)
+        self.assertIn("std::clamp<int64_t>", coordinate_patch)
+        self.assertIn("MapsBothEndpointsExactly", coordinate_patch)
+        self.assertIn("ClampsCoordinatesOutsideTheFramebuffer", coordinate_patch)
         self.assertNotIn("ORANGEPI_UART5_NODE", dtb_recipe)
         self.assertIn('do_compile[depends] += "virtual/kernel:do_deploy"', dtb_recipe)
         self.assertTrue((firmware / "Makefile").is_file())
@@ -186,6 +195,9 @@ class BoardMetadataTest(unittest.TestCase):
         additions = json.loads((files / "zh-CN-additions.json").read_text())
         merger = (files / "merge-webui-locales.py").read_text()
         default_language = (files / "default-webui-language.py").read_text()
+        kvm_pointer = (
+            files / "0001-kvm-use-fixed-absolute-pointer-space.patch"
+        ).read_text()
 
         self.assertIn(
             'CHINESE_LOCALE_SRCREV = "c757b32cc2940f19429af1903d3d0bda9f20c150"',
@@ -202,6 +214,11 @@ class BoardMetadataTest(unittest.TestCase):
         self.assertIn("replace_once", default_language)
         self.assertIn("|| 'zh-CN'", default_language)
         self.assertIn("addAlias('zh', 'zh-CN')", default_language)
+        self.assertIn("0001-kvm-use-fixed-absolute-pointer-space.patch", recipe)
+        self.assertIn("this.rfb.scaleViewport = true", kvm_pointer)
+        self.assertIn("this.rfb.clipViewport = false", kvm_pointer)
+        self.assertIn("this.rfb.dragViewport = false", kvm_pointer)
+        self.assertIn("this.rfb.resizeSession = false", kvm_pointer)
         self.assertEqual(additions["appHeader"]["language"], "语言")
         self.assertEqual(additions["pageNetwork"]["gateway"], "网关")
         self.assertEqual(additions["pageKvm"]["captureScreenshot"], "截取屏幕截图")

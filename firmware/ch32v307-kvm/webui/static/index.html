@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#11130f" />
+    <title>OpenBMC 键鼠控制台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CH32V307 · LOCAL KVM</p>
+          <h1>键鼠控制台</h1>
+        </div>
+        <div class="topbar-actions">
+          <div class="live-badge"><span></span>局域网控制</div>
+          <button id="release-all" class="button button-danger" type="button">紧急释放</button>
+        </div>
+      </header>
+
+      <section class="status-grid" aria-label="设备状态">
+        <article class="status-card" data-status="server">
+          <span class="status-light"></span>
+          <div><small>MAC 服务</small><strong>连接中</strong></div>
+        </article>
+        <article class="status-card" data-status="serial">
+          <span class="status-light"></span>
+          <div><small>WCH-LINK 控制串口</small><strong>检测中</strong><em>—</em></div>
+        </article>
+        <article class="status-card" data-status="keyboard">
+          <span class="status-light"></span>
+          <div><small>P6 键盘 HID</small><strong>检测中</strong></div>
+        </article>
+        <article class="status-card" data-status="mouse">
+          <span class="status-light"></span>
+          <div><small>P6 鼠标 HID</small><strong>检测中</strong></div>
+        </article>
+      </section>
+
+      <section class="control-grid">
+        <article class="panel pointer-panel">
+          <div class="panel-heading">
+            <div><p class="panel-kicker">POINTER</p><h2>触控板</h2></div>
+            <div class="coordinate"><span id="pointer-x">16384</span><i>×</i><span id="pointer-y">16384</span></div>
+          </div>
+          <div id="touchpad" class="touchpad" tabindex="0" aria-label="远程鼠标触控板">
+            <div class="touchpad-grid"></div>
+            <div class="touchpad-center"><span></span></div>
+            <p>单指移动 · 轻点左键 · 双指滚动</p>
+          </div>
+          <div class="mouse-buttons">
+            <button data-mouse-button="1" type="button"><span>●</span>左键</button>
+            <button id="recenter" type="button"><span>⌖</span>居中</button>
+            <button data-mouse-button="2" type="button"><span>●</span>右键</button>
+          </div>
+          <div class="sensitivity-row">
+            <label for="sensitivity">移动速度</label>
+            <input id="sensitivity" type="range" min="18" max="96" value="54" />
+            <output id="sensitivity-value">54</output>
+          </div>
+        </article>
+
+        <aside class="panel telemetry-panel">
+          <div class="panel-heading">
+            <div><p class="panel-kicker">TELEMETRY</p><h2>链路信息</h2></div>
+          </div>
+          <dl class="telemetry">
+            <div><dt>串口设备</dt><dd id="serial-device">—</dd></div>
+            <div><dt>速率</dt><dd id="serial-baud">921600</dd></div>
+            <div><dt>已发送帧</dt><dd id="frames-sent">0</dd></div>
+            <div><dt>最近操作</dt><dd id="last-action">等待控制</dd></div>
+          </dl>
+          <div id="notice" class="notice" role="status">正在读取设备状态…</div>
+          <div class="legend">
+            <p><span class="dot good"></span>已就绪</p>
+            <p><span class="dot warn"></span>仅接口可用 / 未确认接收</p>
+            <p><span class="dot bad"></span>未连接</p>
+          </div>
+        </aside>
+      </section>
+
+      <section class="panel keyboard-panel">
+        <div class="panel-heading keyboard-heading">
+          <div><p class="panel-kicker">KEYBOARD</p><h2>虚拟键盘</h2></div>
+          <p>修饰键点按锁定，再点一次释放</p>
+        </div>
+        <div id="keyboard" class="keyboard" aria-label="虚拟键盘"></div>
+      </section>
+
+      <footer>
+        <p>控制数据只在当前局域网内传输。页面失焦或断线时会自动释放全部按键。</p>
+        <p id="connection-detail">等待服务响应</p>
+      </footer>
+    </main>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

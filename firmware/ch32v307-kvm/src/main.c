@@ -8,11 +8,6 @@ int main(void)
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
     Delay_Init();
 
-    USART_Printf_Init(115200);
-    printf("OpenBMC CH32V307 KVM HID bridge\r\n");
-    printf("SystemClk:%lu ChipID:%08lx\r\n", (unsigned long)SystemCoreClock,
-           (unsigned long)DBGMCU_GetCHIPID());
-
     KVM_Bridge_Init(KVM_UART_BAUDRATE);
     KVM_Timer_Init();
 

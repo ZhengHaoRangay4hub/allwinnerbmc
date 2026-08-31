@@ -32,7 +32,7 @@ typedef struct
 
 static KvmParser parser;
 
-void USART2_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void USART1_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void TIM3_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 
 static uint16_t crc16Update(uint16_t crc, uint8_t value)
@@ -178,15 +178,15 @@ void KVM_Bridge_Init(uint32_t baudrate)
     USART_InitTypeDef usart = {0};
     NVIC_InitTypeDef nvic = {0};
 
-    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_USART1,
+                           ENABLE);
 
-    gpio.GPIO_Pin = GPIO_Pin_2;
+    gpio.GPIO_Pin = GPIO_Pin_9;
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
     gpio.GPIO_Mode = GPIO_Mode_AF_PP;
     GPIO_Init(GPIOA, &gpio);
 
-    gpio.GPIO_Pin = GPIO_Pin_3;
+    gpio.GPIO_Pin = GPIO_Pin_10;
     gpio.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(GPIOA, &gpio);
 
@@ -196,16 +196,16 @@ void KVM_Bridge_Init(uint32_t baudrate)
     usart.USART_Parity = USART_Parity_No;
     usart.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
     usart.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
-    USART_Init(USART2, &usart);
+    USART_Init(USART1, &usart);
 
-    nvic.NVIC_IRQChannel = USART2_IRQn;
+    nvic.NVIC_IRQChannel = USART1_IRQn;
     nvic.NVIC_IRQChannelPreemptionPriority = 1;
     nvic.NVIC_IRQChannelSubPriority = 1;
     nvic.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&nvic);
 
-    USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
-    USART_Cmd(USART2, ENABLE);
+    USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
+    USART_Cmd(USART1, ENABLE);
 }
 
 void KVM_Timer_Init(void)
@@ -230,11 +230,11 @@ void KVM_Timer_Init(void)
     TIM_Cmd(TIM3, ENABLE);
 }
 
-void USART2_IRQHandler(void)
+void USART1_IRQHandler(void)
 {
-    if (USART_GetITStatus(USART2, USART_IT_RXNE) != RESET)
+    if (USART_GetITStatus(USART1, USART_IT_RXNE) != RESET)
     {
-        parseByte((uint8_t)USART_ReceiveData(USART2));
+        parseByte((uint8_t)USART_ReceiveData(USART1));
     }
 }
 
