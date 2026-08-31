@@ -1,277 +1,647 @@
-# Orange Pi Zero 2 OpenBMC port / Orange Pi Zero 2 OpenBMC 移植
+# Orange Pi Zero 2 OpenBMC
 
-This repository contains the Orange Pi Zero 2 (Allwinner H616) OpenBMC porting
-layer and reproducible GitHub Actions build inputs. The upstream OpenBMC tree
-is included under `openbmc/`; board-specific work is under `meta-orangepi/`.
+[中文说明](#中文说明) | [English documentation](#english-documentation)
 
-本仓库包含 Orange Pi Zero 2（全志 H616）的 OpenBMC 移植层，以及可复现的
-GitHub Actions 构建输入。上游 OpenBMC 源码位于 `openbmc/`，板级定制内容位于
-`meta-orangepi/`。
+This repository ports OpenBMC to the Orange Pi Zero 2 (Allwinner H616) and
+adds an MS2130 video path plus a CH32V307 keyboard/absolute-mouse bridge.
 
-## Board scope / 板卡范围
+本仓库将 OpenBMC 移植到 Orange Pi Zero 2（全志 H616），并加入 MS2130 视频采集
+与 CH32V307 键盘/绝对坐标鼠标桥。
 
-- Machine: `orangepi-zero2`
-- SoC: Allwinner H616
-- RAM variants: 512 MB and 1 GB (the machine configuration uses the common
-  hardware description; memory sizing is detected at runtime)
-- GPIO control: packaged through the OpenBMC service layer
-- MS2130 USB capture: packaged as a systemd service and exposed through the
-  board layer
-- USB keyboard/mouse control: CH32V307 composite HID firmware controlled
-  through the WCH-LinkE CDC serial interface (`1a86:8010`), automatically
-  discovered on the BMC side
+---
 
-板卡信息：
+# 中文说明
 
-- 机器配置：`orangepi-zero2`
-- SoC：全志 H616
-- 内存版本：512 MB 和 1 GB（机器配置使用通用硬件描述，运行时识别内存容量）
-- GPIO 控制：通过 OpenBMC 服务层打包
-- MS2130 USB 采集：打包为 systemd 服务，并由板级层提供
-- USB 键盘/鼠标控制：使用 CH32V307 复合 HID 固件，通过 WCH-LinkE CDC
-  串口（`1a86:8010`）控制，BMC 侧自动发现，无需手动选择 `ttyACM` 设备
+## 1. 项目概览
 
-## KVM absolute pointer / KVM 绝对坐标鼠标
+本项目面向 Orange Pi Zero 2 的 512 MiB 和 1 GiB 两种内存版本。两种板卡使用同一
+机器配置、设备树和整卡镜像，DRAM 容量由启动程序在运行时识别。目标处理器是
+Allwinner H616，4 核 Cortex-A53、ARMv8-A/AArch64。
 
-The production KVM path uses one endpoint-exact absolute coordinate system:
+仓库提供：
 
-```text
-Web browser canvas -> noVNC framebuffer coordinates -> obmc-ikvm
-                   -> 0..32767 CH32 report -> P6 absolute USB HID mouse
-```
+- 基于 Yocto/OpenBMC 的 `orangepi-zero2` 机器层；
+- Linux 6.1、U-Boot 2021.10 和 Trusted Firmware-A 2.14.2 的固定源码版本；
+- 可直接写入 TF 卡的完整 `.wic` 镜像；
+- MS2130 USB HDMI 采集卡到 OpenBMC WebUI KVM 的视频链路；
+- WCH-LinkE 自动识别和 CH32V307 复合 USB HID 键盘/绝对坐标鼠标固件；
+- 简体中文 WebUI 语言包；
+- GitHub Actions 可续编构建、镜像结构检查和 SHA-256 校验。
 
-The browser scales only the visible noVNC canvas and does not resize or pan the
-remote session. noVNC converts the displayed pointer position back to the
-negotiated MS2130 framebuffer. `obmc-ikvm` then clamps each axis and maps the
-first and last framebuffer pixels exactly to `0` and `32767`, matching the
-CH32V307 HID report descriptor. The mapping is independent of browser size,
-CSS scaling, and captured resolutions up to 4K.
+固定的上游仓库、分支和提交见 [sources/versions.txt](sources/versions.txt)。板级内容位于
+`meta-orangepi/`，CH32V307 固件位于 `firmware/ch32v307-kvm/`，OpenBMC 上游树位于
+`openbmc/`。
 
-正式 KVM 链路统一使用一套端点精确的绝对坐标：
+## 2. 系统架构
 
 ```text
-浏览器画布 -> noVNC 视频帧坐标 -> obmc-ikvm
-           -> 0..32767 CH32 报告 -> P6 绝对坐标 USB HID 鼠标
+                            Orange Pi Zero 2 / OpenBMC
+┌──────────────┐   HTTPS   ┌───────────────────────────────┐
+│ 浏览器 WebUI │◄─────────►│ bmcweb + webui-vue + noVNC   │
+└──────┬───────┘           └──────────────┬────────────────┘
+       │ 网页鼠标/键盘                    │ RFB / KVM
+       │                                  ▼
+       │                    ┌───────────────────────────────┐
+       │                    │ obmc-ikvm                     │
+       │                    │ 视频：V4L2 MJPEG              │
+       │                    │ 输入：绝对坐标 + 键盘报告      │
+       │                    └──────────┬───────────▲────────┘
+       │                               │           │
+       │            串口控制帧 921600  │           │ MJPEG
+       │                               ▼           │
+       │                    ┌────────────────┐   ┌──┴───────────┐
+       │                    │ WCH-LinkE CDC  │   │ MS2130 UVC   │◄── HDMI
+       │                    │ /dev/ttyACM*   │   │ /dev/video0  │
+       │                    └───────┬────────┘   └──────────────┘
+       │                            │ USART1 PA9/PA10
+       │                            ▼
+       │                    ┌────────────────┐      P6 USB
+       └───────────────────►│ CH32V307       │──────────────► 被控主机
+                            │ 键盘 + 绝对鼠标 │                 USB HID
+                            └────────────────┘
 ```
 
-浏览器只缩放 noVNC 的显示画布，不调整或平移远端会话。noVNC 先把网页上的
-鼠标位置还原到 MS2130 实际协商的视频帧坐标；`obmc-ikvm` 再对坐标钳位，
-将视频帧每个轴的首末像素精确映射为 `0` 和 `32767`，与 CH32V307 的 HID
-描述符完全一致。因此浏览器窗口大小、CSS 缩放和 4K 以下采集分辨率变化不会
-改变网页鼠标与被控主机实际鼠标的位置关系。
+启动介质是标准 MBR 分区的 TF 卡：
 
-## Source revisions / 源码版本
+- 8 KiB 偏移：`u-boot-sunxi-with-spl.bin`，内含 SPL、U-Boot 和 BL31；
+- 第 1 分区：FAT 启动分区，包含 Linux `Image`、H616 设备树、`extlinux.conf` 和
+  `uboot.env`；
+- 第 2 分区：ext4 OpenBMC 根文件系统；
+- 根文件系统直接使用 `/dev/mmcblk0p2`，不依赖 initramfs。
 
-See [`sources/versions.txt`](sources/versions.txt) for the exact upstream
-repositories and commits used for Linux, U-Boot, Trusted Firmware-A, and OpenBMC.
+## 3. KVM 视频和绝对坐标键鼠
 
-具体的 Linux、U-Boot、Trusted Firmware-A 和 OpenBMC 上游仓库及提交版本见
-[`sources/versions.txt`](sources/versions.txt)。
+### 视频链路
 
-## GitHub Actions build / GitHub Actions 构建
+MS2130 作为标准 UVC/V4L2 设备连接 Orange Pi。`uvcvideo` 提供 `/dev/video0`，
+`obmc-ikvm` 读取设备实际协商的 MJPEG 宽度、高度和像素格式，并将视频送入现有
+WebUI KVM。分辨率不固定为 1080p；输入源切换分辨率后，服务按 V4L2 协商结果更新
+帧缓冲。具体可用分辨率仍取决于 MS2130 固件、HDMI 源和 USB 带宽。
 
-The workflow is defined in
-[`build-orangepi-zero2-image.yml`](.github/workflows/build-orangepi-zero2-image.yml). It
-prepares the board Linux configuration, verifies the OpenBMC boot components,
-finishes the reusable Node.js host-tool cache, then lets BitBake build the complete
-OpenBMC image (including the boot components required inside that image) and
-uploads one directly flashable `.wic` TF-card image, `SHA256SUMS`, and a
-read-only image validation report.
+### 坐标链路
+
+正式 WebUI 使用一套端点精确的绝对坐标：
+
+```text
+浏览器画布坐标
+  -> noVNC 反向换算为 MS2130 帧缓冲坐标
+  -> obmc-ikvm 对每个轴钳位并映射到 0..32767
+  -> WCH-LinkE CDC 串口帧
+  -> CH32V307 P6 绝对坐标 USB HID 鼠标
+  -> 被控主机光标
+```
+
+noVNC 只缩放显示画布，不调整远端会话分辨率，也不启用画布拖动。`obmc-ikvm` 使用
+64 位中间值和四舍五入，将帧缓冲第一个像素精确映射为 `0`，最后一个像素精确映射为
+`32767`；越界值先钳位。因此浏览器尺寸、CSS 缩放和采集分辨率变化不会改变网页指针
+与被控机指针的坐标关系。
+
+CH32V307 在面向被控机的 P6 USB 口上枚举两个 HID 接口：
+
+- Boot Keyboard：8 字节键盘报告；
+- Absolute Mouse：6 字节报告，格式为 `buttons, x_le16, y_le16, wheel`。
+
+控制协议使用 USART1、921600 baud、8-N-1：
+
+```text
+A5 5A | version | type | sequence | length | payload | crc16_le
+```
+
+CRC 使用 CRC-16/CCITT-FALSE。消息类型包括键盘、指针、心跳和 release-all。控制链路
+静默超过 1 秒时，CH32V307 会释放全部按键和鼠标按钮，避免断线卡键。
+
+### WCH-LinkE 与 CH32V307 接线
+
+在 CH32V307V EVT 板 J2 上安装 UART 跳线：
+
+- WCH-LinkE `RX_OUT` → CH32V307 `TX1` / PA9；
+- WCH-LinkE `TX_OUT` → CH32V307 `RX1` / PA10；
+- WCH-LinkE USB → Orange Pi Zero 2；
+- CH32V307 P6 USB Device → 被控主机；
+- 串口使用 3.3 V 电平。
+
+OpenBMC 通过 USB VID/PID `1a86:8010` 查找 WCH-LinkE，只接受对应的 `ttyACM*`
+设备，不依赖易变化的 `/dev/ttyACM0` 编号。热拔插后服务会周期性重新发现设备。
+
+## 4. 已集成的硬件和驱动
+
+| 模块 | 内核/用户态组件 | 当前状态 |
+| --- | --- | --- |
+| H616 CPU | ARM64、SMP、Cortex-A53、CPUFreq/OPP | 已编译；默认 ondemand 调频 |
+| TF 卡 | `MMC_SUNXI`、MBR、VFAT、ext4 | 已编译并由镜像检查器验证 |
+| 时钟/电源 | SUNXI CCU、H6 R-CCU、DE2 CCU、H616 pinctrl | 已编译 |
+| 温度/看门狗/RTC | `SUN8I_THERMAL`、`SUNXI_WATCHDOG`、`RTC_DRV_SUN6I` | 已编译 |
+| 有线网络 | STMMAC、`DWMAC_SUN8I`、AC200、Realtek/Motorcomm PHY | 驱动已包含 |
+| 板载 Wi-Fi | UWE5622、`sprdwl_ng`、cfg80211、rfkill、固件、wpa_supplicant | 已集成；此前在实板连接 Wi-Fi 验证 |
+| USB Host | xHCI、EHCI、OHCI、USB Storage、USB HID、USB Audio | 已编译 |
+| MS2130 视频 | `uvcvideo`、V4L2、MJPEG、`obmc-ikvm` | 已集成；此前在 512 MiB 实板热部署验证 |
+| WCH-LinkE | `cdc_acm`、VID/PID 自动发现、`ttyACM*` 重连 | 已集成；USART1 通信已用硬件断点验证 |
+| CH32V307 HID | P6 复合键盘/绝对鼠标、串口心跳和断线释放 | 固件已编译、烧写并在主机侧枚举验证 |
+| GPIO | GPIO character device、libgpiod 工具和板级服务 | 已集成 |
+| Web 管理 | bmcweb、webui-vue、noVNC、简体中文语言包 | 已集成 |
+
+“已编译/已集成”表示对应配置、模块或软件包存在于构建输入并通过 CI 构建；它不自动
+等同于当前 Release 已在所有外设组合上完成实板回归。最新整卡镜像尚需重新烧录，分别
+在 512 MiB 和 1 GiB 板卡上做完整启动、网络、视频和键鼠测试。
+
+## 5. 最新 Release
+
+最新版本：
+[openbmc-orangepi-zero2-20260901-wchlinke-kvm](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260901-wchlinke-kvm)
+
+- OpenBMC 镜像源码提交：`3c9089d3d69afec13805aee44307eb6493ccdbd9`；
+- 构建任务：[GitHub Actions #27](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33421854269)；
+- 整卡镜像：`obmc-phosphor-image-orangepi-zero2-20260831175858.wic`；
+- 镜像大小：`336955392` 字节；
+- 镜像 SHA-256：`fe57948c2166e590d26fd29fb69e9b52180bc24609d46acd2aebe7caa6dfc366`；
+- CH32V307 BIN SHA-256：`19aec3e70e5c07ca958be0f2b348262b49720837bc6d1cbbd83072642de1c4d5`。
+
+Release 同时提供 `.wic`、`SHA256SUMS`、镜像验证 JSON、CH32V307 `.bin` 和 `.hex`。
+`.wic` 是同时适用于 512 MiB 和 1 GiB 版本的整卡镜像，已经包含 Linux、设备树、
+U-Boot、BL31、启动环境和 OpenBMC 根文件系统。
+
+## 6. 编译机要求
+
+OpenBMC/Yocto 应在 x86_64 Linux 上编译。原生 macOS 不是受支持的构建主机；Mac
+用户应使用 Linux 虚拟机、远程 Linux 服务器或自托管 Linux Runner。源码和构建目录
+建议放在区分大小写的本地 NVMe 文件系统上。
+
+| 编译机 | 建议并行度 | 使用体验 |
+| --- | --- | --- |
+| 4–8 核 / 16 GiB / 150 GiB 可用 SSD | `BB_NUMBER_THREADS=4`、`PARALLEL_MAKE=-j4` | 可以编译，但首次构建很慢 |
+| 16 核 / 32 GiB / 250 GiB 可用 NVMe | `BB_NUMBER_THREADS=12`、`PARALLEL_MAKE=-j12` | 推荐配置，能持续利用大部分 CPU |
+| 24–32 核 / 64–128 GiB / 300 GiB+ NVMe | 16–24 个并行任务 | 适合频繁全量构建和多人共享缓存 |
+
+内存不足时不要把并行度直接设置为 CPU 线程数；LLVM、GCC、Rust 和 Node.js 的单个
+任务会出现较高峰值内存。16 核 32 GiB 主机建议先从 12 个并行任务开始。高主频会改善
+配方解析、链接和部分单线程任务，更多核心主要加速大量互相独立的 BitBake 任务。
+
+## 7. GitHub Actions 编译
 
 工作流位于
-[`build-orangepi-zero2-image.yml`](.github/workflows/build-orangepi-zero2-image.yml)。它先准备板级
-Linux 配置并检查 OpenBMC 启动组件，先完成可复用的 Node.js 主机构建工具缓存，
-再由 BitBake 编译完整 OpenBMC（镜像内部仍包含启动所必需的启动组件），
-最后上传一个可直接烧录的 `.wic` TF 卡镜像、`SHA256SUMS` 和镜像校验报告。
+[.github/workflows/build-orangepi-zero2-image.yml](.github/workflows/build-orangepi-zero2-image.yml)，
+使用 Ubuntu 24.04 Runner。进入仓库的 **Actions → Orange Pi Zero 2 OpenBMC → Run
+workflow**：
 
-The boot check, native-tool cache, and full-image stages share a 330-minute budget inside a
-360-minute job. The remaining 30 minutes cover setup, graceful termination,
-cache/log saving, and artifact validation/upload. A controlled timeout
-can dispatch up to five continuation runs if the cache was saved. Actual
-recipe errors and early SIGTERM/SIGKILL exits remain failures. Downloads and
-completed sstate tasks are reusable; an unfinished compiler task does not
-resume at an instruction-level breakpoint. The full image uses `bitbake -k`
-so unrelated recipes can finish producing reusable sstate after another fails.
+- `preflight_only=false`：构建完整 `.wic`；
+- `preflight_only=true`：只验证板级配方和代表性驱动对象，不生成镜像；
+- `checkpoint=0`：正常从第一轮开始。
 
-启动检查、原生工具缓存与完整镜像编译共享 330 分钟预算，Job 上限为 360 分钟；其余 30 分钟用于
-环境准备、正常终止、保存缓存与日志，以及镜像校验和上传。正常预算到期且缓存
-保存成功时，最多自动续编五轮；真实配方错误
-及提前发生的 SIGTERM/SIGKILL 仍判为失败。可复用下载文件和已完成的 sstate 任务，
-未完成的编译任务不能在指令级断点续跑。完整镜像使用 `bitbake -k`，让不受错误影响的
-配方继续完成缓存生成。
+完整任务上限 360 分钟，其中 330 分钟为共享编译预算。下载目录、sstate 和哈希等价
+数据库会缓存；正常预算到期且缓存成功时最多自动续编 5 轮。缓存以完成的 BitBake
+任务为粒度，不能从被中断编译器进程的机器指令位置恢复。
 
-Before the full image, CI runs `bitbake nodejs-native:do_populate_sysroot`.
-This completes the Web UI's expensive host tool through its sstate-producing
-task before kernel compilation competes for the same four CPUs. It keeps
-`PARALLEL_MAKE=-j4`; the stage order does not change recipe sources or discard
-compatible caches. A cached Node.js sysroot is reused. If this stage reaches
-the shared deadline, CI saves its completed caches and continues in another
-run without starting the full image. It is skipped in board-preflight mode.
-It does not produce a flashable image, and cannot preserve unfinished compiler
-objects when interrupted; only completed sstate tasks can be reused.
+成功任务上传：
 
-完整镜像阶段前，CI 先执行 `bitbake nodejs-native:do_populate_sysroot`，让 Web 界面
-依赖的耗时主机工具先完成到可生成 sstate 缓存的阶段，再开始内核编译。单个任务仍使用
-`PARALLEL_MAKE=-j4`；这里只改变顺序，不修改配方源码或丢弃兼容缓存，已有的 Node.js
-缓存可直接复用。若该阶段耗尽共享预算，则保存已完成的缓存并续编，不再启动完整镜像
-阶段；板级预检模式跳过此步骤。这个阶段本身不生成刷写镜像，也不能保留中断时尚未
-完成的编译对象，仍然只能复用已完成的 sstate 任务。
+- 可直接写卡的 `.wic`；
+- `SHA256SUMS`；
+- `.wic.verification.json`；
+- 构建诊断日志。
 
-The CI cache also retains the local hash-equivalence database alongside
-sstate. This preserves mappings used to reuse equivalent build outputs
-after metadata changes; identical cached tasks remain reusable as before.
+## 8. 本地 Linux 编译 OpenBMC
 
-CI 同时把哈希等价数据库保存在 sstate 缓存目录，保留元数据变化后判断构建结果
-是否可复用的映射；完全相同任务的现有缓存仍可正常沿用。
-
-The kernel and U-Boot use pinned Git recipes with shallow downloads and
-normal sstate support. The earlier `externalsrc` mode explicitly disabled
-sstate creation for these recipes. Its old build directories cannot be
-recovered from sstate: the first standard-recipe build creates that cache;
-other completed, compatible recipe caches can still be reused.
-
-内核与 U-Boot 使用固定 Git 提交、浅下载和正常 sstate 缓存。此前的 `externalsrc`
-模式明确禁用了这两个配方的 sstate 生成，旧构建目录不能从缓存恢复；切换后的
-第一次构建才会生成可复用缓存。其他已完成且兼容的配方缓存仍可沿用。
-
-The optional workflow input `preflight_only` validates boot recipes, compiles
-the capture helper with its strict warning flags, installs the GPIO helper,
-and checks the fetched kernel configuration. It also compiles representative
-vendor Wi-Fi and CPU-frequency objects with the actual Yocto compiler. The
-independent concurrency group does not cancel a full image build. Preflight
-only reads caches, never dispatches a full-image continuation, and produces
-no firmware artifacts. Passing it does not mean the full kernel or OpenBMC
-image has been built.
-
-可选输入 `preflight_only` 验证启动配方、按严格警告选项编译采集程序、检查 GPIO
-工具安装和实际内核配置，并使用真正的 Yocto 编译器编译厂商 Wi-Fi 与调频驱动的
-代表性目标文件。它使用独立并发组，不取消正在进行的完整镜像构建；只读取缓存，
-不自动续跑完整镜像，也不上传固件产物。预检通过不代表完整内核或 OpenBMC 镜像
-已经编译完成。
-
-BL31 is built for `sun50i_h616` as an internal dependency and included in the
-combined SPL/U-Boot payload at the TF card's 8 KiB offset. The boot partition
-contains Image, the Zero 2 device tree, and extlinux.conf. The second partition
-is the ext4 OpenBMC root filesystem; no initramfs is needed to resolve its
-`/dev/mmcblk0p2` root argument. Separate Linux/U-Boot deliverables are not uploaded.
-
-BL31 使用 `sun50i_h616` 平台编译，作为内部依赖放入 TF 卡 8 KiB 偏移处的 SPL/U-Boot
-组合启动程序。启动分区包含 Image、Zero 2 设备树和 extlinux.conf；第二分区是 ext4
-OpenBMC 根文件系统，`/dev/mmcblk0p2` 根分区参数无需 initramfs 解析。
-工作流不再单独上传 Linux/U-Boot 交付物。
-
-The boot partition also contains a CRC-protected `uboot.env`, generated from
-the compiled bootloader's defaults. Userspace uses actual `libubootenv`
-utilities and `/etc/fw_env.config` to access `/boot/uboot.env`, without
-writing raw card offsets. Services that need it require the boot mount.
-
-启动分区另含从当前 U-Boot 默认配置生成、带 CRC 校验的 `uboot.env`。
-用户态使用真正的 `libubootenv` 工具，并通过 `/etc/fw_env.config` 访问
-`/boot/uboot.env`，不写裸卡偏移；相关服务要求先挂载启动分区。
-
-Before uploading, the workflow checks the MBR partition layout, the SPL at
-8 KiB and its checksum, the embedded U-Boot/BL31 FIT payloads, the boot files,
-and the ext4 filesystem. It also verifies that the root filesystem contains
-OpenBMC, AArch64 systemd/bmcweb, and the Web UI. A `.verification.json` report
-accompanies the image. These checks do not replace boot testing on physical
-512 MB and 1 GB boards.
-
-上传前，工作流会检查 MBR 分区、8 KiB 处的 SPL 及其校验和、内嵌的 U-Boot/BL31
-FIT 数据、启动文件和 ext4 文件系统，并确认根文件系统包含 OpenBMC、AArch64 版
-systemd/bmcweb 及 Web UI。镜像附带 `.verification.json` 校验报告。
-这些检查不能替代 512 MB 和 1 GB 实板的启动测试。
-
-To repeat the read-only checks on an existing image, install Python 3.11+,
-`mtools`, `device-tree-compiler`, and `e2fsprogs`, then run:
-复查已有镜像时，安装上述工具后执行（不挂载镜像，也不写入 TF 卡）：
+以下示例适用于 Ubuntu 22.04/24.04 x86_64。先安装依赖：
 
 ```sh
-python3 scripts/verify-tf-image.py /path/to/openbmc.wic
+sudo apt-get update
+sudo apt-get install -y \
+  bc bison build-essential chrpath cpio device-tree-compiler diffstat \
+  e2fsprogs flex gawk gcc-aarch64-linux-gnu git libelf-dev liblz4-tool \
+  libncurses-dev libssl-dev locales lz4 make mtools patch python3 \
+  python3-git python3-jinja2 python3-pexpect python3-pip python3-setuptools \
+  python3-subunit rsync socat texinfo u-boot-tools unzip wget xterm zstd
 ```
 
-## Local build / 本地构建
-
-Use a supported x86_64 Linux build host. First follow the workflow's source
-checkout, patch, and defconfig generation steps, then copy the board layer
-into `openbmc/`. 在支持的 x86_64 Linux 编译机上，先按工作流准备源码、应用补丁并
-生成 defconfig，再复制板级层并初始化：
+在干净检出中准备板级层：
 
 ```sh
 cp -a meta-orangepi openbmc/meta-orangepi
 cd openbmc
+OPENBMC_SOURCE_DIR="$PWD"
+OPENBMC_BUILD_DIR="$PWD/../openbmc-build"
 TEMPLATECONF=meta-orangepi/conf/templates/default \
-    . ./setup orangepi-zero2 build-orangepi-zero2
+  . ./setup orangepi-zero2 "$OPENBMC_BUILD_DIR"
 ```
 
-Before running `bitbake obmc-phosphor-image`, replace the historical cluster
-paths in `conf/local.conf` with your source, build, download, and sstate paths.
-For direct Internet access clear both `PREMIRRORS` and `PREMIRRORS:prepend`.
-GitHub Actions already overrides these values and uses upstream sources directly.
+模板中包含历史共享集群路径。本地构建前必须修改
+`$OPENBMC_BUILD_DIR/conf/local.conf`，至少覆盖这些值：
 
-执行 `bitbake obmc-phosphor-image` 前，需要把 `conf/local.conf` 中历史集群的源码、
-构建及缓存路径改为本机路径。使用直连网络时同时清空 `PREMIRRORS` 与
-`PREMIRRORS:prepend`。GitHub Actions 已覆盖这些配置，直接使用上游源。
+```conf
+DL_DIR = "/absolute/path/yocto-downloads"
+SSTATE_DIR = "/absolute/path/yocto-sstate"
+TMPDIR = "/absolute/path/yocto-tmp"
+BB_HASHSERVE_DB_DIR = "/absolute/path/yocto-sstate"
 
-The helper scripts in `scripts/` document the dependency bootstrap used on
-the shared cluster. Do not place SSH keys or GitHub tokens in this repository.
+BB_NUMBER_THREADS = "12"
+BB_NUMBER_PARSE_THREADS = "4"
+PARALLEL_MAKE = "-j12"
 
-`scripts/` 中的辅助脚本记录了共享集群上的依赖准备方式。不要把 SSH 私钥或
-GitHub token 放入本仓库。
+PREMIRRORS = ""
+PREMIRRORS:prepend = ""
+MIRRORS = ""
+CONNECTIVITY_CHECK_URIS = ""
 
-## Released TF-card image / 已发布 TF 卡镜像
+OS_RELEASE_ROOTPATH = "/absolute/path/to/allwinnerbmc"
+BBPATH:prepend = "/absolute/path/to/allwinnerbmc/openbmc/upstream-layers/openembedded-core/meta:"
+HOSTTOOLS_NONFATAL:append = " chrpath rpcgen"
+HOSTTOOLS:remove = " chrpath rpcgen"
+```
 
-The latest image is the
-[`openbmc-orangepi-zero2-20260830-kvm-zhcn`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260830-kvm-zhcn)
-MS2130 KVM and Simplified Chinese fix. It was built by
-[GitHub Actions run 25](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33302795787)
-from commit `545e02f6`.
+随后初始化环境并构建：
 
-最新镜像为
-[`openbmc-orangepi-zero2-20260830-kvm-zhcn`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260830-kvm-zhcn)
-MS2130 KVM 与简体中文修复版。该镜像由
-[GitHub Actions 第 25 轮](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33302795787)
-基于提交 `545e02f6` 构建。
+```sh
+cd "$OPENBMC_SOURCE_DIR"
+. ./oe-init-build-env "$OPENBMC_BUILD_DIR"
+bitbake obmc-phosphor-image
+```
 
-- Image / 镜像：
-  [`obmc-phosphor-image-orangepi-zero2-20260830090358.wic`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260830-kvm-zhcn/obmc-phosphor-image-orangepi-zero2-20260830090358.wic)
-- Size / 大小：`336692224` bytes（约 321.1 MiB）
-- SHA-256：`64c1a85bbdcddeb49d27767e88f982977459a61d543ccde459a0e4497b73b74b`
-- Checksum file / 校验文件：
-  [`SHA256SUMS`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260830-kvm-zhcn/SHA256SUMS)
-- Verification report / 校验报告：
-  [`obmc-phosphor-image-orangepi-zero2-20260830090358.wic.verification.json`](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/download/openbmc-orangepi-zero2-20260830-kvm-zhcn/obmc-phosphor-image-orangepi-zero2-20260830090358.wic.verification.json)
+镜像位于 `$TMPDIR/deploy/images/orangepi-zero2/*.wic`。首次构建会下载并编译完整
+交叉工具链；后续构建可复用 `DL_DIR` 和 `SSTATE_DIR`。
 
-This release fixes the H616 `obmc-ikvm` startup failure, connects MS2130 MJPG
-capture to the existing WebUI KVM path, uses the V4L2-negotiated resolution
-instead of forcing 1080p, and merges the `zh-CN` WebUI locale. The current H616
-integration is video-only; remote keyboard and mouse injection are not enabled.
+运行仓库测试和只读镜像检查：
 
-本版本修复 H616 上 `obmc-ikvm` 启动失败的问题，将 MS2130 MJPG 视频接入现有
-WebUI KVM 通道，按 V4L2 实际协商结果自动使用分辨率而不再强制 1080p，并合并
-`zh-CN` 中文语言包。当前 H616 适配为纯视频模式，尚未启用远程键盘和鼠标注入。
+```sh
+python3 -m unittest discover -s tests -v
+python3 scripts/verify-tf-image.py /path/to/image.wic
+```
 
-This is one directly flashable whole-card image for both the 512 MB and 1 GB
-Orange Pi Zero 2 variants. Linux, the device tree, U-Boot, BL31, the boot
-environment, and the OpenBMC root filesystem are integrated into the image;
-they are not separate release assets. CI and an independent macOS recheck
-produced identical verification reports and matching SHA-256 values.
+## 9. 编译 CH32V307 固件
 
-这是同时用于 Orange Pi Zero 2 512 MB 与 1 GB 版本的单一整卡镜像，可直接写入
-TF 卡。Linux、设备树、U-Boot、BL31、启动环境和 OpenBMC 根文件系统均已集成在
-镜像内，不作为独立 Release 产物发布。CI 校验与 macOS 本地复验报告完全一致，
-SHA-256 也与发布清单相符。
+需要 WCH CH32V307EVT 3.1 SDK 和包含 `riscv-none-embed-gcc` 的 WCH RISC-V 工具链。
+macOS 默认路径匹配 MounRiver Studio 2；其他系统通过参数覆盖：
 
-Before writing the image, verify `SHA256SUMS` and carefully confirm the target
-device. Imaging tools such as balenaEtcher can write the `.wic` file directly;
-advanced users may use `dd` against the entire card device, not a partition.
-Selecting the wrong device destroys its contents. CI and an independent macOS
-recheck produced identical verification reports. The KVM binary, service and
-Chinese WebUI bundle were hot-deployed and validated on a running 512 MB board;
-the complete new image has not yet been reflashed and boot-tested on both RAM
-variants.
+```sh
+make -C firmware/ch32v307-kvm \
+  WCH_EVT=/path/to/CH32V307EVT-3.1/EVT \
+  TOOLCHAIN_DIR=/path/to/wch-riscv-toolchain/bin
+```
 
-烧录前请先核对 `SHA256SUMS`，并仔细确认目标设备。balenaEtcher 等镜像工具可以
-直接写入 `.wic`；使用 `dd` 时必须选择整张 TF 卡设备而不是某个分区。选错设备会
-覆盖其中的数据。CI 与 macOS 独立复验报告完全一致；KVM 二进制、服务和中文
-WebUI 包已热部署并在运行中的 512 MB 实板验证。尚未将这份完整新镜像重新烧录并
-在两种内存版本上完成启动测试。
+输出位于：
+
+```text
+firmware/ch32v307-kvm/build/ch32v307-kvm.elf
+firmware/ch32v307-kvm/build/ch32v307-kvm.hex
+firmware/ch32v307-kvm/build/ch32v307-kvm.bin
+```
+
+固件烧入 CH32V307 后，P6 口连接被控主机；WCH-LinkE USB 口连接 OpenBMC。详细协议、
+引脚和 Mac 调试 WebUI 见
+[firmware/ch32v307-kvm/README.md](firmware/ch32v307-kvm/README.md)。
+
+## 10. 烧录和校验
+
+先校验镜像：
+
+```sh
+sha256sum -c SHA256SUMS
+```
+
+balenaEtcher 可以直接写入 `.wic`。Linux 高级用户也可以写入整张卡设备：
+
+```sh
+sudo dd if=obmc-phosphor-image-orangepi-zero2-20260831175858.wic \
+  of=/dev/sdX bs=4M conv=fsync status=progress
+```
+
+`/dev/sdX` 必须是整张 TF 卡而不是分区。选择错误设备会不可恢复地覆盖数据。写卡后
+建议断电重插，再通过串口观察 U-Boot 和 Linux 启动。
+
+## 11. 当前限制
+
+- 最新 Action 镜像已通过分区、SPL、U-Boot/BL31、启动文件、ext4、AArch64
+  用户态和 WebUI 的只读检查，但验证报告明确标记 `hardware_boot_test: not performed`；
+- 最新整卡镜像仍需分别在 512 MiB 与 1 GiB 板卡上完成重刷和全功能回归；
+- MS2130 的最大分辨率、帧率和音频能力受具体采集卡版本与 USB 带宽影响；
+- CH32V307 键鼠需要独立烧录 Release 中的 MCU 固件，并按 J2/USART1 接线；
+- 不要把 GitHub Token、SSH 私钥或设备密码提交到仓库。
+
+---
+
+# English documentation
+
+## 1. Project overview
+
+This project targets both the 512 MiB and 1 GiB Orange Pi Zero 2. The two
+boards use one machine configuration, device tree, and whole-card image; DRAM
+size is detected by the boot firmware at runtime. The target SoC is the
+Allwinner H616 with four Cortex-A53 ARMv8-A/AArch64 cores.
+
+The repository provides:
+
+- an `orangepi-zero2` Yocto/OpenBMC machine layer;
+- pinned Linux 6.1, U-Boot 2021.10, and Trusted Firmware-A 2.14.2 sources;
+- one directly flashable `.wic` TF-card image;
+- an MS2130 USB HDMI capture path integrated with the OpenBMC WebUI KVM;
+- WCH-LinkE discovery and CH32V307 composite USB keyboard/absolute-mouse
+  firmware;
+- a Simplified Chinese WebUI locale;
+- resumable GitHub Actions builds, image-structure checks, and SHA-256 files.
+
+Exact upstream repositories and commits are listed in
+[sources/versions.txt](sources/versions.txt). Board metadata is in
+`meta-orangepi/`, CH32V307 firmware is in `firmware/ch32v307-kvm/`, and the
+vendored OpenBMC tree is in `openbmc/`.
+
+## 2. System architecture
+
+```text
+                              Orange Pi Zero 2 / OpenBMC
+┌──────────────┐   HTTPS   ┌───────────────────────────────┐
+│ Browser UI   │◄─────────►│ bmcweb + webui-vue + noVNC   │
+└──────┬───────┘           └──────────────┬────────────────┘
+       │ browser input                    │ RFB / KVM
+       │                                  ▼
+       │                    ┌───────────────────────────────┐
+       │                    │ obmc-ikvm                     │
+       │                    │ video: V4L2 MJPEG             │
+       │                    │ input: absolute pointer + key │
+       │                    └──────────┬───────────▲────────┘
+       │                               │           │
+       │       921600-baud frames      │           │ MJPEG
+       │                               ▼           │
+       │                    ┌────────────────┐   ┌──┴───────────┐
+       │                    │ WCH-LinkE CDC  │   │ MS2130 UVC   │◄── HDMI
+       │                    │ /dev/ttyACM*   │   │ /dev/video0  │
+       │                    └───────┬────────┘   └──────────────┘
+       │                            │ USART1 PA9/PA10
+       │                            ▼
+       │                    ┌────────────────┐      P6 USB
+       └───────────────────►│ CH32V307       │──────────────► managed host
+                            │ key + abs mouse│                 USB HID
+                            └────────────────┘
+```
+
+The TF card uses a conventional MBR layout:
+
+- 8 KiB offset: `u-boot-sunxi-with-spl.bin`, containing SPL, U-Boot, and BL31;
+- partition 1: FAT boot partition with the Linux `Image`, H616 device tree,
+  `extlinux.conf`, and `uboot.env`;
+- partition 2: ext4 OpenBMC root filesystem;
+- `/dev/mmcblk0p2` is mounted directly, without an initramfs.
+
+## 3. KVM video and absolute input
+
+### Video path
+
+The MS2130 is attached to the Orange Pi as a standard UVC/V4L2 device.
+`uvcvideo` exposes `/dev/video0`; `obmc-ikvm` reads the negotiated MJPEG width,
+height, and pixel format and feeds the existing WebUI KVM. Resolution is not
+hard-coded to 1080p. A source resolution change reallocates the framebuffer
+from the current V4L2 format. Available modes still depend on the particular
+MS2130 firmware, HDMI source, and USB bandwidth.
+
+### Coordinate path
+
+The production UI uses one endpoint-exact absolute coordinate system:
+
+```text
+browser canvas coordinates
+  -> noVNC converts back to MS2130 framebuffer coordinates
+  -> obmc-ikvm clamps and maps each axis to 0..32767
+  -> WCH-LinkE CDC serial frame
+  -> CH32V307 P6 absolute USB HID mouse
+  -> managed-host cursor
+```
+
+noVNC scales only the displayed canvas, does not resize the remote session,
+and disables viewport dragging. `obmc-ikvm` uses a 64-bit intermediate and
+rounding: the first framebuffer pixel maps exactly to `0`, the final pixel
+maps exactly to `32767`, and out-of-range input is clamped. Browser size, CSS
+scaling, and capture resolution therefore do not change the browser-to-host
+pointer relationship.
+
+The CH32V307 P6 device port exposes two HID interfaces to the managed host:
+
+- Boot Keyboard with an 8-byte report;
+- Absolute Mouse with a 6-byte `buttons, x_le16, y_le16, wheel` report.
+
+The control link is USART1 at 921600 baud, 8-N-1:
+
+```text
+A5 5A | version | type | sequence | length | payload | crc16_le
+```
+
+CRC-16/CCITT-FALSE protects the frame. Packet types cover keyboard, pointer,
+heartbeat, and release-all. The MCU releases every key and mouse button after
+one second without link traffic.
+
+### WCH-LinkE and CH32V307 wiring
+
+Install the UART jumpers on the CH32V307V EVT J2 header:
+
+- WCH-LinkE `RX_OUT` → CH32V307 `TX1` / PA9;
+- WCH-LinkE `TX_OUT` → CH32V307 `RX1` / PA10;
+- WCH-LinkE USB → Orange Pi Zero 2;
+- CH32V307 P6 USB Device → managed host;
+- UART signalling must be 3.3 V.
+
+OpenBMC finds USB VID/PID `1a86:8010` and accepts only the matching `ttyACM*`
+device, so it does not depend on a changing `/dev/ttyACM0` number. The daemon
+periodically rediscovers the device after unplug/replug events.
+
+## 4. Integrated hardware and drivers
+
+| Area | Kernel/userspace components | Current status |
+| --- | --- | --- |
+| H616 CPU | ARM64, SMP, Cortex-A53, CPUFreq/OPP | Built; ondemand is the default governor |
+| TF card | `MMC_SUNXI`, MBR, VFAT, ext4 | Built and checked by the image verifier |
+| Clocks/platform | SUNXI CCU, H6 R-CCU, DE2 CCU, H616 pinctrl | Built |
+| Thermal/watchdog/RTC | `SUN8I_THERMAL`, `SUNXI_WATCHDOG`, `RTC_DRV_SUN6I` | Built |
+| Ethernet | STMMAC, `DWMAC_SUN8I`, AC200, Realtek/Motorcomm PHY | Drivers included |
+| Onboard Wi-Fi | UWE5622, `sprdwl_ng`, cfg80211, rfkill, firmware, wpa_supplicant | Integrated; previously connected on hardware |
+| USB host | xHCI, EHCI, OHCI, USB Storage, USB HID, USB Audio | Built |
+| MS2130 video | `uvcvideo`, V4L2, MJPEG, `obmc-ikvm` | Integrated; previously hot-deployed on a 512 MiB board |
+| WCH-LinkE | `cdc_acm`, VID/PID discovery, `ttyACM*` reconnect | Integrated; USART1 traffic verified with hardware breakpoints |
+| CH32V307 HID | P6 composite keyboard/absolute mouse, heartbeat/failsafe | Firmware built, flashed, and enumerated by a host |
+| GPIO | GPIO character device, libgpiod tools, board service | Integrated |
+| Web management | bmcweb, webui-vue, noVNC, Simplified Chinese locale | Integrated |
+
+“Built” or “integrated” means that the configuration, module, or package is
+present in the build inputs and passed CI. It does not mean that the current
+release has been regression-tested with every peripheral combination. The
+latest whole-card image still needs complete boot, network, video, and input
+testing on both 512 MiB and 1 GiB boards.
+
+## 5. Latest release
+
+Latest version:
+[openbmc-orangepi-zero2-20260901-wchlinke-kvm](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/releases/tag/openbmc-orangepi-zero2-20260901-wchlinke-kvm)
+
+- OpenBMC image source commit: `3c9089d3d69afec13805aee44307eb6493ccdbd9`;
+- build: [GitHub Actions #27](https://github.com/ZhengHaoRangay4hub/allwinnerbmc/actions/runs/33421854269);
+- whole-card image: `obmc-phosphor-image-orangepi-zero2-20260831175858.wic`;
+- image size: `336955392` bytes;
+- image SHA-256: `fe57948c2166e590d26fd29fb69e9b52180bc24609d46acd2aebe7caa6dfc366`;
+- CH32V307 BIN SHA-256: `19aec3e70e5c07ca958be0f2b348262b49720837bc6d1cbbd83072642de1c4d5`.
+
+Release assets include the `.wic`, `SHA256SUMS`, image verification JSON, and
+CH32V307 `.bin` and `.hex` files. The single `.wic` supports both RAM variants
+and already contains Linux, the device tree, U-Boot, BL31, boot environment,
+and the OpenBMC root filesystem.
+
+## 6. Build-host requirements
+
+Build OpenBMC/Yocto on x86_64 Linux. Native macOS is not a supported build
+host; use a Linux VM, remote Linux server, or self-hosted Linux runner from a
+Mac. Put source and build directories on a case-sensitive local NVMe filesystem.
+
+| Build host | Suggested parallelism | Expected use |
+| --- | --- | --- |
+| 4–8 cores / 16 GiB / 150 GiB free SSD | `BB_NUMBER_THREADS=4`, `PARALLEL_MAKE=-j4` | Works, but a cold build is slow |
+| 16 cores / 32 GiB / 250 GiB free NVMe | `BB_NUMBER_THREADS=12`, `PARALLEL_MAKE=-j12` | Recommended; sustains high CPU use |
+| 24–32 cores / 64–128 GiB / 300 GiB+ NVMe | 16–24 parallel tasks | Frequent clean builds and shared caches |
+
+Do not blindly match parallel jobs to hardware threads on a memory-limited
+host. LLVM, GCC, Rust, and Node.js recipes can have high peak memory. Start a
+16-core/32-GiB machine at 12 jobs. Higher clock speed helps parsing, linking,
+and serial tasks; more cores help the many independent BitBake tasks.
+
+## 7. GitHub Actions build
+
+The workflow is
+[.github/workflows/build-orangepi-zero2-image.yml](.github/workflows/build-orangepi-zero2-image.yml)
+and runs on Ubuntu 24.04. Open **Actions → Orange Pi Zero 2 OpenBMC → Run
+workflow**:
+
+- `preflight_only=false`: build the complete `.wic`;
+- `preflight_only=true`: validate board recipes and representative driver
+  objects without producing an image;
+- `checkpoint=0`: start a normal first run.
+
+The job limit is 360 minutes, with a shared 330-minute compiler budget.
+Downloads, sstate, and the hash-equivalence database are cached. A controlled
+budget expiry can dispatch up to five continuation runs after saving cache.
+Resume granularity is a completed BitBake task, not a machine-instruction
+checkpoint inside an interrupted compiler.
+
+A successful image job uploads:
+
+- the directly flashable `.wic`;
+- `SHA256SUMS`;
+- `.wic.verification.json`;
+- build diagnostics.
+
+## 8. Local OpenBMC build on Linux
+
+This example targets Ubuntu 22.04/24.04 x86_64. Install dependencies:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y \
+  bc bison build-essential chrpath cpio device-tree-compiler diffstat \
+  e2fsprogs flex gawk gcc-aarch64-linux-gnu git libelf-dev liblz4-tool \
+  libncurses-dev libssl-dev locales lz4 make mtools patch python3 \
+  python3-git python3-jinja2 python3-pexpect python3-pip python3-setuptools \
+  python3-subunit rsync socat texinfo u-boot-tools unzip wget xterm zstd
+```
+
+Prepare the board layer in a clean checkout:
+
+```sh
+cp -a meta-orangepi openbmc/meta-orangepi
+cd openbmc
+OPENBMC_SOURCE_DIR="$PWD"
+OPENBMC_BUILD_DIR="$PWD/../openbmc-build"
+TEMPLATECONF=meta-orangepi/conf/templates/default \
+  . ./setup orangepi-zero2 "$OPENBMC_BUILD_DIR"
+```
+
+The template contains historical shared-cluster paths. Before building,
+override at least these values in `$OPENBMC_BUILD_DIR/conf/local.conf`:
+
+```conf
+DL_DIR = "/absolute/path/yocto-downloads"
+SSTATE_DIR = "/absolute/path/yocto-sstate"
+TMPDIR = "/absolute/path/yocto-tmp"
+BB_HASHSERVE_DB_DIR = "/absolute/path/yocto-sstate"
+
+BB_NUMBER_THREADS = "12"
+BB_NUMBER_PARSE_THREADS = "4"
+PARALLEL_MAKE = "-j12"
+
+PREMIRRORS = ""
+PREMIRRORS:prepend = ""
+MIRRORS = ""
+CONNECTIVITY_CHECK_URIS = ""
+
+OS_RELEASE_ROOTPATH = "/absolute/path/to/allwinnerbmc"
+BBPATH:prepend = "/absolute/path/to/allwinnerbmc/openbmc/upstream-layers/openembedded-core/meta:"
+HOSTTOOLS_NONFATAL:append = " chrpath rpcgen"
+HOSTTOOLS:remove = " chrpath rpcgen"
+```
+
+Initialize the environment and build:
+
+```sh
+cd "$OPENBMC_SOURCE_DIR"
+. ./oe-init-build-env "$OPENBMC_BUILD_DIR"
+bitbake obmc-phosphor-image
+```
+
+The image is under `$TMPDIR/deploy/images/orangepi-zero2/*.wic`. A cold build
+downloads and compiles the full cross toolchain; later builds reuse `DL_DIR`
+and `SSTATE_DIR`.
+
+Run repository tests and the read-only image verifier with:
+
+```sh
+python3 -m unittest discover -s tests -v
+python3 scripts/verify-tf-image.py /path/to/image.wic
+```
+
+## 9. Build the CH32V307 firmware
+
+The firmware needs WCH CH32V307EVT 3.1 and a WCH RISC-V toolchain containing
+`riscv-none-embed-gcc`. The default macOS path matches MounRiver Studio 2;
+override both paths on other systems:
+
+```sh
+make -C firmware/ch32v307-kvm \
+  WCH_EVT=/path/to/CH32V307EVT-3.1/EVT \
+  TOOLCHAIN_DIR=/path/to/wch-riscv-toolchain/bin
+```
+
+Outputs are:
+
+```text
+firmware/ch32v307-kvm/build/ch32v307-kvm.elf
+firmware/ch32v307-kvm/build/ch32v307-kvm.hex
+firmware/ch32v307-kvm/build/ch32v307-kvm.bin
+```
+
+After flashing the MCU, connect P6 to the managed host and WCH-LinkE USB to
+OpenBMC. Protocol, pin, and Mac test-UI details are in
+[firmware/ch32v307-kvm/README.md](firmware/ch32v307-kvm/README.md).
+
+## 10. Flashing and verification
+
+Verify the download first:
+
+```sh
+sha256sum -c SHA256SUMS
+```
+
+balenaEtcher can write the `.wic` directly. Advanced Linux users may write the
+entire card device:
+
+```sh
+sudo dd if=obmc-phosphor-image-orangepi-zero2-20260831175858.wic \
+  of=/dev/sdX bs=4M conv=fsync status=progress
+```
+
+`/dev/sdX` must be the whole TF-card device, not a partition. A wrong target
+will irreversibly overwrite data. Power-cycle/reinsert the card after writing
+and monitor U-Boot and Linux through the serial console.
+
+## 11. Current limitations
+
+- The latest Action image passed read-only checks for partitions, SPL,
+  U-Boot/BL31, boot files, ext4, AArch64 userspace, and WebUI, but its report
+  explicitly says `hardware_boot_test: not performed`;
+- the latest whole-card image still needs a fresh flash and full regression on
+  both 512 MiB and 1 GiB boards;
+- maximum MS2130 resolution, frame rate, and audio support depend on the exact
+  capture-card firmware and USB bandwidth;
+- CH32V307 input requires separately flashing the MCU asset from the Release
+  and wiring J2/USART1 correctly;
+- never commit GitHub tokens, SSH private keys, or device passwords.
