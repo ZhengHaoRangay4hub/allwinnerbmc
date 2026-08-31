@@ -1,0 +1,606 @@
+From: OpenBMC Orange Pi Zero 2 integration
+Subject: [PATCH] ikvm: add CH32V307 HID bridge with CH340 auto discovery
+
+Route KVM keyboard and absolute-pointer reports to a CH32V307 over a
+framed 921600-baud serial protocol. Support automatic CH340/CH341 discovery
+by USB VID/PID, periodic heartbeats, hot-unplug recovery, and reconnects.
+
+Upstream-Status: Inappropriate [board-specific hardware integration]
+
+diff --git a/ikvm_args.cpp b/ikvm_args.cpp
+index 11d19f0..cc99409 100644
+--- a/ikvm_args.cpp
++++ b/ikvm_args.cpp
+@@ -12,11 +12,12 @@ Args::Args(int argc, char* argv[]) :
+     commandLine(argc, argv)
+ {
+     int option;
+-    const char* opts = "f:s:hk:p:u:v:ct:";
++    const char* opts = "f:s:hk:p:m:u:v:ct:";
+     struct option lopts[] = {
+         {"frameRate", 1, nullptr, 'f'},      {"subsampling", 1, nullptr, 's'},
+         {"help", 0, nullptr, 'h'},           {"keyboard", 1, nullptr, 'k'},
+-        {"mouse", 1, nullptr, 'p'},          {"udcName", 1, nullptr, 'u'},
++        {"mouse", 1, nullptr, 'p'},          {"mcu-device", 1, nullptr, 'm'},
++        {"udcName", 1, nullptr, 'u'},
+         {"videoDevice", 1, nullptr, 'v'},    {"calcCRC", 0, nullptr, 'c'},
+         {"timeoutSeconds", 1, nullptr, 't'}, {nullptr, 0, nullptr, 0}};
+ 
+@@ -43,6 +44,9 @@ Args::Args(int argc, char* argv[]) :
+             case 'p':
+                 pointerPath = std::string(optarg);
+                 break;
++            case 'm':
++                mcuPath = std::string(optarg);
++                break;
+             case 'u':
+                 udcName = std::string(optarg);
+                 break;
+@@ -71,6 +75,9 @@ void Args::printUsage()
+     fprintf(stderr, "-h, --help             show this message and exit\n");
+     fprintf(stderr, "-k device              HID keyboard gadget device\n");
+     fprintf(stderr, "-p device              HID mouse gadget device\n");
++    fprintf(stderr,
++            "-m, --mcu-device device External HID MCU serial device; use "
++            "'auto' for CH340 discovery\n");
+     fprintf(stderr,
+             "-u udc name            UDC that HID gadget will connect to\n");
+     fprintf(stderr, "-v device              V4L2 device\n");
+diff --git a/ikvm_args.hpp b/ikvm_args.hpp
+index beca8d9..17ccafd 100644
+--- a/ikvm_args.hpp
++++ b/ikvm_args.hpp
+@@ -98,6 +98,12 @@ class Args
+         return pointerPath;
+     }
+ 
++    /* @brief Get the path to the external HID MCU serial device */
++    inline const std::string& getMcuPath() const
++    {
++        return mcuPath;
++    }
++
+     /*
+      * @brief Get the name of UDC
+      *
+@@ -153,6 +159,8 @@ class Args
+     std::string keyboardPath;
+     /* @brief Path to the USB mouse device */
+     std::string pointerPath;
++    /* @brief Path to the external HID MCU serial device */
++    std::string mcuPath;
+     /* @brief Name of UDC */
+     std::string udcName;
+     /* @brief Path to the V4L2 video device */
+diff --git a/ikvm_input.cpp b/ikvm_input.cpp
+index 4a70ca5..06120cb 100644
+--- a/ikvm_input.cpp
++++ b/ikvm_input.cpp
+@@ -7,8 +7,17 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <rfb/keysym.h>
++#include <termios.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#include <unistd.h>
++
++#include <algorithm>
++#include <array>
++#include <chrono>
++#include <cctype>
++#include <thread>
++#include <vector>
+ 
+ #include <phosphor-logging/elog-errors.hpp>
+ #include <phosphor-logging/elog.hpp>
+@@ -22,12 +31,91 @@ namespace ikvm
+ using namespace phosphor::logging;
+ using namespace sdbusplus::xyz::openbmc_project::Common::File::Error;
+ 
++namespace
++{
++constexpr const char* ch340SysfsTtyPath = "/sys/class/tty";
++constexpr const char* ch340VendorId = "1a86";
++constexpr std::array<const char*, 3> ch340ProductIds = {"5523", "7522",
++                                                        "7523"};
++
++std::string readSysfsValue(const fs::path& path)
++{
++    std::ifstream stream(path);
++    std::string value;
++
++    if (!std::getline(stream, value))
++    {
++        return {};
++    }
++
++    value.erase(std::remove_if(value.begin(), value.end(),
++                               [](unsigned char c) { return std::isspace(c); }),
++                value.end());
++    std::transform(value.begin(), value.end(), value.begin(),
++                   [](unsigned char c) { return std::tolower(c); });
++    return value;
++}
++
++bool isCh340UsbDevice(const fs::path& path)
++{
++    if (readSysfsValue(path / "idVendor") != ch340VendorId)
++    {
++        return false;
++    }
++
++    const std::string product = readSysfsValue(path / "idProduct");
++    return std::any_of(ch340ProductIds.begin(), ch340ProductIds.end(),
++                       [&product](const char* id) { return product == id; });
++}
++
++std::string findCh340Device()
++{
++    std::error_code error;
++    std::vector<std::string> matches;
++    fs::directory_iterator iterator(ch340SysfsTtyPath, error);
++    const fs::directory_iterator end;
++
++    while (!error && iterator != end)
++    {
++        const std::string ttyName = iterator->path().filename().string();
++        if (ttyName.rfind("ttyUSB", 0) == 0)
++        {
++            fs::path current = fs::canonical(iterator->path(), error);
++            while (!error && !current.empty())
++            {
++                if (isCh340UsbDevice(current))
++                {
++                    matches.emplace_back("/dev/" + ttyName);
++                    break;
++                }
++
++                const fs::path parent = current.parent_path();
++                if (parent == current)
++                {
++                    break;
++                }
++                current = parent;
++            }
++            error.clear();
++        }
++        iterator.increment(error);
++    }
++
++    std::sort(matches.begin(), matches.end());
++    return matches.empty() ? std::string{} : matches.front();
++}
++} // namespace
++
+ Input::Input(const std::string& kbdPath, const std::string& ptrPath,
+-             const std::string& udc) :
+-    keyboardFd(-1), pointerFd(-1), keyboardReport{0}, pointerReport{0},
+-    keyboardPath(kbdPath), pointerPath(ptrPath), udcName(udc)
++             const std::string& udc, const std::string& mcu) :
++    keyboardFd(-1), pointerFd(-1), mcuFd(-1), mcuSequence(0), mcuActive(false),
++    keyboardReport{0}, pointerReport{0}, keyboardPath(kbdPath),
++    pointerPath(ptrPath), mcuPath(mcu), udcName(udc),
++    lastMcuHeartbeat(std::chrono::steady_clock::now()),
++    lastMcuOpenAttempt(std::chrono::steady_clock::time_point::min())
+ {
+-    if (keyboardPath.empty() && pointerPath.empty())
++    if (!mcuPath.empty() ||
++        (keyboardPath.empty() && pointerPath.empty()))
+     {
+         return;
+     }
+@@ -43,6 +131,18 @@ Input::~Input()
+ 
+ void Input::connect()
+ {
++    if (!mcuPath.empty())
++    {
++        mcuActive = true;
++        lastMcuOpenAttempt = std::chrono::steady_clock::now();
++        if (openMcu())
++        {
++            writeMcuPacket(mcuReleaseAllPacket, nullptr, 0);
++            lastMcuHeartbeat = std::chrono::steady_clock::now();
++        }
++        return;
++    }
++
+     if (!hidUdcStream.is_open())
+     {
+         return;
+@@ -130,6 +230,25 @@ void Input::connect()
+ 
+ void Input::disconnect()
+ {
++    mcuActive = false;
++
++    if (mcuFd >= 0)
++    {
++        writeMcuPacket(mcuReleaseAllPacket, nullptr, 0);
++        if (mcuFd >= 0)
++        {
++            close(mcuFd);
++            mcuFd = -1;
++        }
++    }
++
++    {
++        std::lock_guard<std::mutex> lock(keyEventMutex);
++        keysDown.clear();
++        memset(keyboardReport, 0, sizeof(keyboardReport));
++        memset(pointerReport, 0, sizeof(pointerReport));
++    }
++
+     if (keyboardFd >= 0)
+     {
+         close(keyboardFd);
+@@ -166,7 +285,7 @@ void Input::keyEvent(rfbBool down, rfbKeySym key, rfbClientPtr cl)
+     /* Update the last activity time for session timeout */
+     cd->lastActivityTime = std::chrono::steady_clock::now();
+ 
+-    if (input->keyboardFd < 0)
++    if (input->keyboardFd < 0 && input->mcuFd < 0)
+     {
+         return;
+     }
+@@ -243,7 +362,7 @@ void Input::pointerEvent(int buttonMask, int x, int y, rfbClientPtr cl)
+     /* Update the last activity time for session timeout */
+     cd->lastActivityTime = std::chrono::steady_clock::now();
+ 
+-    if (input->pointerFd < 0)
++    if (input->pointerFd < 0 && input->mcuFd < 0)
+     {
+         return;
+     }
+@@ -294,7 +413,7 @@ void Input::sendWakeupPacket()
+ {
+     uint8_t wakeupReport[KEY_REPORT_LENGTH] = {0};
+ 
+-    if (pointerFd >= 0)
++    if (pointerFd >= 0 || mcuFd >= 0)
+     {
+         uint16_t xy = SHRT_MAX / 2;
+ 
+@@ -304,7 +423,7 @@ void Input::sendWakeupPacket()
+         writePointer(wakeupReport);
+     }
+ 
+-    if (keyboardFd >= 0)
++    if (keyboardFd >= 0 || mcuFd >= 0)
+     {
+         memset(&wakeupReport[0], 0, KEY_REPORT_LENGTH);
+ 
+@@ -323,6 +442,11 @@ void Input::sendWakeupPacket()
+ 
+ bool Input::writeKeyboard(const uint8_t* report)
+ {
++    if (mcuFd >= 0)
++    {
++        return writeMcuPacket(mcuKeyboardPacket, report, KEY_REPORT_LENGTH);
++    }
++
+     std::unique_lock<std::mutex> lk(keyMutex);
+     uint retryCount = HID_REPORT_RETRY_MAX;
+ 
+@@ -355,6 +479,12 @@ bool Input::writeKeyboard(const uint8_t* report)
+ 
+ void Input::writePointer(const uint8_t* report)
+ {
++    if (mcuFd >= 0)
++    {
++        writeMcuPacket(mcuPointerPacket, report, PTR_REPORT_LENGTH);
++        return;
++    }
++
+     std::unique_lock<std::mutex> lk(ptrMutex);
+     uint retryCount = HID_REPORT_RETRY_MAX;
+ 
+@@ -383,4 +513,162 @@ void Input::writePointer(const uint8_t* report)
+     }
+ }
+ 
++bool Input::openMcu()
++{
++    termios settings{};
++    const std::string device = (mcuPath == "auto") ? findCh340Device()
++                                                    : mcuPath;
++
++    if (device.empty())
++    {
++        return false;
++    }
++
++    mcuFd = open(device.c_str(), O_RDWR | O_NOCTTY | O_CLOEXEC | O_NONBLOCK);
++    if (mcuFd < 0)
++    {
++        lg2::error("Failed to open HID MCU device {PATH} {ERROR}", "PATH",
++                   device, "ERROR", strerror(errno));
++        return false;
++    }
++
++    if (tcgetattr(mcuFd, &settings) < 0)
++    {
++        lg2::error("Failed to read HID MCU serial settings {ERROR}", "ERROR",
++                   strerror(errno));
++        close(mcuFd);
++        mcuFd = -1;
++        return false;
++    }
++
++    cfmakeraw(&settings);
++    cfsetispeed(&settings, B921600);
++    cfsetospeed(&settings, B921600);
++    settings.c_cflag |= CLOCAL | CREAD;
++#ifdef CRTSCTS
++    settings.c_cflag &= ~CRTSCTS;
++#endif
++
++    if (tcsetattr(mcuFd, TCSANOW, &settings) < 0)
++    {
++        lg2::error("Failed to configure HID MCU serial device {ERROR}",
++                   "ERROR", strerror(errno));
++        close(mcuFd);
++        mcuFd = -1;
++        return false;
++    }
++
++    tcflush(mcuFd, TCIOFLUSH);
++    lg2::info("Connected CH32V307 HID bridge through {PATH}", "PATH", device);
++    return true;
++}
++
++uint16_t Input::crc16(const uint8_t* data, size_t length)
++{
++    uint16_t crc = 0xFFFF;
++
++    for (size_t i = 0; i < length; ++i)
++    {
++        crc ^= static_cast<uint16_t>(data[i]) << 8;
++        for (int bit = 0; bit < 8; ++bit)
++        {
++            crc = (crc & 0x8000) ? static_cast<uint16_t>((crc << 1) ^ 0x1021)
++                                 : static_cast<uint16_t>(crc << 1);
++        }
++    }
++    return crc;
++}
++
++bool Input::writeMcuPacket(uint8_t type, const uint8_t* payload, size_t length)
++{
++    constexpr size_t headerLength = 6;
++    constexpr size_t crcLength = 2;
++    std::array<uint8_t, headerLength + KEY_REPORT_LENGTH + crcLength> frame{};
++    size_t frameLength;
++    size_t offset = 0;
++    int retries = MCU_WRITE_RETRY_MAX;
++    uint16_t checksum;
++    std::unique_lock<std::mutex> lock(mcuMutex);
++
++    if (mcuFd < 0 || length > KEY_REPORT_LENGTH)
++    {
++        return false;
++    }
++
++    frame[0] = mcuMagic0;
++    frame[1] = mcuMagic1;
++    frame[2] = mcuProtocolVersion;
++    frame[3] = type;
++    frame[4] = mcuSequence++;
++    frame[5] = static_cast<uint8_t>(length);
++    if (length != 0)
++    {
++        memcpy(&frame[headerLength], payload, length);
++    }
++    checksum = crc16(&frame[2], 4 + length);
++    frame[headerLength + length] = static_cast<uint8_t>(checksum);
++    frame[headerLength + length + 1] = static_cast<uint8_t>(checksum >> 8);
++    frameLength = headerLength + length + crcLength;
++
++    while (offset < frameLength)
++    {
++        ssize_t written = write(mcuFd, frame.data() + offset,
++                                frameLength - offset);
++        if (written > 0)
++        {
++            offset += static_cast<size_t>(written);
++            continue;
++        }
++        if (written < 0 && errno == EINTR)
++        {
++            continue;
++        }
++        if (written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
++        {
++            if (retries-- == 0)
++            {
++                lg2::error("Timed out writing HID MCU packet");
++                close(mcuFd);
++                mcuFd = -1;
++                return false;
++            }
++            std::this_thread::sleep_for(std::chrono::milliseconds(2));
++            continue;
++        }
++
++        lg2::error("Failed to write HID MCU packet {ERROR}", "ERROR",
++                   strerror(errno));
++        close(mcuFd);
++        mcuFd = -1;
++        return false;
++    }
++    return true;
++}
++
++void Input::tick()
++{
++    auto now = std::chrono::steady_clock::now();
++
++    if (!mcuActive)
++    {
++        return;
++    }
++
++    if (mcuFd < 0 && now - lastMcuOpenAttempt >= mcuReconnectInterval)
++    {
++        lastMcuOpenAttempt = now;
++        if (openMcu())
++        {
++            writeMcuPacket(mcuReleaseAllPacket, nullptr, 0);
++            lastMcuHeartbeat = now;
++        }
++    }
++
++    if (mcuFd >= 0 && now - lastMcuHeartbeat >= mcuHeartbeatInterval)
++    {
++        lastMcuHeartbeat = now;
++        writeMcuPacket(mcuHeartbeatPacket, nullptr, 0);
++    }
++}
++
+ } // namespace ikvm
+diff --git a/ikvm_input.hpp b/ikvm_input.hpp
+index acce9c2..49f72a0 100644
+--- a/ikvm_input.hpp
++++ b/ikvm_input.hpp
+@@ -2,6 +2,9 @@
+ 
+ #include <rfb/rfb.h>
+ 
++#include <chrono>
++#include <cstddef>
++#include <cstdint>
+ #include <filesystem>
+ #include <fstream>
+ #include <map>
+@@ -24,9 +27,10 @@ class Input
+      * @param[in] kbdPath - Path to the USB keyboard device
+      * @param[in] ptrPath - Path to the USB mouse device
+      * @param[in] udc - Name of UDC
++     * @param[in] mcu - Path to an external HID MCU serial device
+      */
+     Input(const std::string& kbdPath, const std::string& ptrPath,
+-          const std::string& udc);
++          const std::string& udc, const std::string& mcu);
+     ~Input();
+     Input(const Input&) = delete;
+     Input& operator=(const Input&) = delete;
+@@ -58,6 +62,8 @@ class Input
+ 
+     /* @brief Sends a wakeup data packet to the USB input device */
+     void sendWakeupPacket();
++    /* @brief Sends the periodic external MCU link heartbeat */
++    void tick();
+ 
+   private:
+     static constexpr int KEY_REPORT_LENGTH = 8;
+@@ -71,14 +77,33 @@ class Input
+         "/sys/bus/platform/devices/1e6a0000.usb-vhub";
+     /* @brief Retry limit for writing an HID report */
+     static constexpr int HID_REPORT_RETRY_MAX = 5;
++    static constexpr int MCU_WRITE_RETRY_MAX = 25;
++    static constexpr uint8_t mcuMagic0 = 0xA5;
++    static constexpr uint8_t mcuMagic1 = 0x5A;
++    static constexpr uint8_t mcuProtocolVersion = 0x01;
++    static constexpr uint8_t mcuKeyboardPacket = 0x01;
++    static constexpr uint8_t mcuPointerPacket = 0x02;
++    static constexpr uint8_t mcuHeartbeatPacket = 0x03;
++    static constexpr uint8_t mcuReleaseAllPacket = 0x04;
++    static constexpr std::chrono::milliseconds mcuHeartbeatInterval{250};
++    static constexpr std::chrono::seconds mcuReconnectInterval{2};
+ 
+     bool writeKeyboard(const uint8_t* report);
+     void writePointer(const uint8_t* report);
++    bool openMcu();
++    bool writeMcuPacket(uint8_t type, const uint8_t* payload, size_t length);
++    static uint16_t crc16(const uint8_t* data, size_t length);
+ 
+     /* @brief File descriptor for the USB keyboard device */
+     int keyboardFd;
+     /* @brief File descriptor for the USB mouse device */
+     int pointerFd;
++    /* @brief File descriptor for the external HID MCU serial device */
++    int mcuFd;
++    /* @brief Sequence number for external MCU packets */
++    uint8_t mcuSequence;
++    /* @brief Whether at least one VNC client currently needs the MCU */
++    bool mcuActive;
+     /* @brief Data for keyboard report */
+     uint8_t keyboardReport[KEY_REPORT_LENGTH];
+     /* @brief Data for pointer report */
+@@ -87,6 +112,8 @@ class Input
+     std::string keyboardPath;
+     /* @brief Path to the USB mouse device */
+     std::string pointerPath;
++    /* @brief Path to the external HID MCU serial device */
++    std::string mcuPath;
+     /* @brief Name of UDC */
+     std::string udcName;
+     /*
+@@ -96,10 +123,16 @@ class Input
+     std::map<int, int> keysDown;
+     /* @brief Handle of the HID gadget UDC */
+     std::ofstream hidUdcStream;
++    /* @brief Last external MCU heartbeat transmission time */
++    std::chrono::steady_clock::time_point lastMcuHeartbeat;
++    /* @brief Last attempt to open the external MCU serial device */
++    std::chrono::steady_clock::time_point lastMcuOpenAttempt;
+     /* @brief Mutex for sending keyboard reports */
+     std::mutex keyMutex;
+     /* @brief Mutex for sending pointer reports */
+     std::mutex ptrMutex;
++    /* @brief Mutex for serializing external MCU frames */
++    std::mutex mcuMutex;
+     /* @brief Mutex for key events */
+     std::mutex keyEventMutex;
+ };
+diff --git a/ikvm_manager.cpp b/ikvm_manager.cpp
+index 481d401..ab30285 100644
+--- a/ikvm_manager.cpp
++++ b/ikvm_manager.cpp
+@@ -9,7 +9,8 @@ namespace ikvm
+ Manager::Manager(const Args& args) :
+     continueExecuting(true), serverDone(false), videoDone(true),
+     videoPaused(false),
+-    input(args.getKeyboardPath(), args.getPointerPath(), args.getUdcName()),
++    input(args.getKeyboardPath(), args.getPointerPath(), args.getUdcName(),
++          args.getMcuPath()),
+     video(args.getVideoPath(), input, args.getFrameRate(),
+           args.getSubsampling()),
+     server(args, input, video)
+diff --git a/ikvm_server.cpp b/ikvm_server.cpp
+index a021635..dca92d5 100644
+--- a/ikvm_server.cpp
++++ b/ikvm_server.cpp
+@@ -123,6 +123,7 @@ void Server::resize()
+ void Server::run()
+ {
+     rfbProcessEvents(server, processTime);
++    input.tick();
+ 
+     if (server->clientHead)
+     {
+diff --git a/test/ikvm_args_test.cpp b/test/ikvm_args_test.cpp
+index a62aa43..23f7df8 100644
+--- a/test/ikvm_args_test.cpp
++++ b/test/ikvm_args_test.cpp
+@@ -111,6 +111,18 @@ TEST_F(ArgsTest, ParseUdcName)
+     deleteArgv(argv, args.size());
+ }
+ 
++TEST_F(ArgsTest, ParseMcuDevice)
++{
++    std::vector<std::string> args = {"obmc-ikvm", "--mcu-device", "auto"};
++    char** argv = createArgv(args);
++
++    Args parser(args.size(), argv);
++
++    EXPECT_EQ(parser.getMcuPath(), "auto");
++
++    deleteArgv(argv, args.size());
++}
++
+ TEST_F(ArgsTest, ParseCalcCRCFlag)
+ {
+     std::vector<std::string> args = {"obmc-ikvm", "-c"};
+

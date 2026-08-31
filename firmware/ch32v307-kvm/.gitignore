@@ -1,0 +1,4 @@
+build/*
+!build/ch32v307-kvm.bin
+!build/ch32v307-kvm.elf
+!build/ch32v307-kvm.hex

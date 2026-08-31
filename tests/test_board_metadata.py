@@ -144,6 +144,40 @@ class BoardMetadataTest(unittest.TestCase):
         self.assertIn("wcnmodem.sha256sum", firmware)
         self.assertIn("boardconfig.sha256sum", firmware)
 
+    def test_ch32v307_kvm_auto_detects_ch340_without_rebuilding_the_kernel(self):
+        bbappend = (
+            LAYER / "recipes-graphics/obmc-ikvm/obmc-ikvm_%.bbappend"
+        ).read_text()
+        files = LAYER / "recipes-graphics/obmc-ikvm/obmc-ikvm"
+        service = (files / "obmc-ikvm.service").read_text()
+        patch = (files / "0002-add-CH32V307-serial-HID-backend.patch").read_text()
+        dtb_recipe = (
+            LAYER / "recipes-bsp/boot/orangepi-fixed-kernel-dtb.bb"
+        ).read_text()
+        packagegroup = (
+            LAYER / "recipes-phosphor/packagegroups/packagegroup-orangepi-zero2.bb"
+        ).read_text()
+        firmware = ROOT / "firmware/ch32v307-kvm"
+
+        self.assertIn("0002-add-CH32V307-serial-HID-backend.patch", bbappend)
+        self.assertIn("modprobe ch341", service)
+        self.assertIn("--mcu-device auto", service)
+        self.assertIn("kernel-module-ch341", packagegroup)
+        self.assertIn("mcuKeyboardPacket = 0x01", patch)
+        self.assertIn("mcuPointerPacket = 0x02", patch)
+        self.assertIn("mcuHeartbeatPacket = 0x03", patch)
+        self.assertIn("B921600", patch)
+        self.assertIn('ch340VendorId = "1a86"', patch)
+        for product_id in ("5523", "7522", "7523"):
+            self.assertIn(f'"{product_id}"', patch)
+        self.assertIn('ch340SysfsTtyPath = "/sys/class/tty"', patch)
+        self.assertIn('ttyName.rfind("ttyUSB", 0)', patch)
+        self.assertNotIn("ORANGEPI_UART5_NODE", dtb_recipe)
+        self.assertIn('do_compile[depends] += "virtual/kernel:do_deploy"', dtb_recipe)
+        self.assertTrue((firmware / "Makefile").is_file())
+        self.assertTrue((firmware / "src/kvm_bridge.c").is_file())
+        self.assertTrue((firmware / "src/usbd_desc.c").is_file())
+
     def test_webui_has_complete_default_simplified_chinese_locale(self):
         recipe = (
             LAYER / "recipes-phosphor/webui/webui-vue_%.bbappend"

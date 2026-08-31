@@ -17,7 +17,8 @@ GitHub Actions 构建输入。上游 OpenBMC 源码位于 `openbmc/`，板级定
 - GPIO control: packaged through the OpenBMC service layer
 - MS2130 USB capture: packaged as a systemd service and exposed through the
   board layer
-- USB keyboard/mouse control is intentionally left for a later USB MCU phase
+- USB keyboard/mouse control: CH32V307 composite HID firmware with an
+  automatically discovered CH340 USB-to-UART link on the BMC side
 
 板卡信息：
 
@@ -26,7 +27,8 @@ GitHub Actions 构建输入。上游 OpenBMC 源码位于 `openbmc/`，板级定
 - 内存版本：512 MB 和 1 GB（机器配置使用通用硬件描述，运行时识别内存容量）
 - GPIO 控制：通过 OpenBMC 服务层打包
 - MS2130 USB 采集：打包为 systemd 服务，并由板级层提供
-- USB 键盘/鼠标控制暂留到后续 USB 单片机阶段
+- USB 键盘/鼠标控制：使用 CH32V307 复合 HID 固件，BMC 侧通过 CH340
+  USB 转串口自动发现，无需手动选择 `ttyUSB` 设备
 
 ## Source revisions / 源码版本
 

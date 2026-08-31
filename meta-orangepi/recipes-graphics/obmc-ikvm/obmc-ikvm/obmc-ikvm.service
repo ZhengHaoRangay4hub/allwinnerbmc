@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenBMC ipKVM daemon for MS2130 UVC capture
+Description=OpenBMC ipKVM daemon for MS2130 video and CH32V307 HID
 After=systemd-udev-settle.service
 Wants=systemd-udev-settle.service
 Conflicts=ms2130-capture.service
@@ -8,7 +8,8 @@ Conflicts=ms2130-capture.service
 Restart=always
 RestartSec=2
 ExecStartPre=/sbin/modprobe uvcvideo
-ExecStart=/usr/bin/obmc-ikvm -v /dev/video0 -f 30 -c
+ExecStartPre=-/sbin/modprobe ch341
+ExecStart=/usr/bin/obmc-ikvm -v /dev/video0 -f 30 -c --mcu-device auto
 
 [Install]
 WantedBy=multi-user.target
